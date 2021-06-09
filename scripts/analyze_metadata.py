@@ -52,12 +52,8 @@ labels_sum = df.sum().drop(["ID", "Label"])
 df = pd.read_csv("kag_leukemia_val.csv")
 
 
-# Drosophila Embryo
-df = pd.read_csv("dro_embryo.csv.csv", header=None)
-
-
 # BBBC Human U20S Cells (Out of Focus)
-df = pd.read_csv("bbbc_human_u2os_focus.csv", index_col=False)
+df = pd.read_csv("bbbc_u2os_focus_metadata.csv", index_col=False)
 df.rename(columns={"Image_Count_Nuclei": "num_nuclei",
                    "Image_FileName_OrigDAPI": "filename"}, inplace=True)
 
@@ -112,33 +108,6 @@ for i in range(len(df)):
         new_df = new_df.append(new_row, ignore_index=True)
     except:
         print(row["class"])
-
-# Cell-IDR idr0067 Yeast Meiosis
-names = "figure,filename,organism,Term Source 1 REF,Term Source 1 Accession,Characteristics [Strain],Term Source 2 REF,Term Source 2 Accession,Protocol,_," \
-        "microscopy,Comment [Gene Identifier] 1,Comment [Gene Symbol] 1,Comment [Protein] 1,Comment [Construct\Marker] 1,Comment [Gene Identifier] 2,Comment [Gene Symbol] 2,Comment [Protein] 2,Comment [Genetic Background],Comment [Genetic Background Identifier],Comment [Gene Annotation Comments],Assay Name,file_path,Comment [Image File Type]," \
-        "channel_1,channel_2,Comment [Experimental Conclusion],Image"
-names = names.split(",")
-col_indices = list(range(len(names)))
-col_indices.remove(9)
-
-df = pd.read_csv("cell_idr0067_annotations.csv", index_col=False,
-                 skiprows=1, header=None, names=names, usecols=col_indices)
-useful = ["dataset", "filename", "organism", "microscopy",
-          "Comment [Protein] 1", "Comment [Protein] 2",
-          "file_path", "channel_1", "channel_2"]
-df = df[useful]
-df = df.loc[~df.microscopy.str.contains("Electron")]
-
-
-# Cell-IDR idr0047 Yeast RNA FISH
-to_remove = [2, 3, 4, 5, 7, 8, 9, 10, 15, 16, 17, 20, 22, 23, 24, 25, 26, 27]
-col_indices = [i for i in range(27) if i not in to_remove]
-names = ["dataset", "filename", "cell_line", "channel_1", "channel_2",
-         "channel_3", "channel_4", "organism",
-         "file_path", "channel_desc"]
-df = pd.read_csv("cell_idr0047_annotations.csv", index_col=False,
-                 skiprows=1, header=None, names=names, usecols=col_indices)
-df = df[~df.dataset.str.contains("processed")]
 
 
 # Cell-IDR idr0097 Human Protein GFP-Tagging

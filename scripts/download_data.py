@@ -8,6 +8,7 @@ def download(x: str, name: str) -> None:
         if "kag" in name:
             os.system(x)
         elif "idr" in name:
+            os.system("export PATH=/home/stan/.aspera/cli/bin:$PATH")
             os.system("ascp -TQ -l40m -P 33001 -i "
                       "'/home/stan/.aspera/cli/etc/asperaweb_id_dsa.openssh' "
                       f"{name}@fasp.ebi.ac.uk:. ./")
@@ -35,14 +36,15 @@ def download_nonexisting(df: pd.DataFrame) -> None:
             for download_cmd in df.loc[i, "download"]:
                 download(download_cmd, df.loc[i, "dir_name"])
         else:
-            download(download_cmd, df.loc[i, "dir_name"])
+            download(df.loc[i, "download"], df.loc[i, "dir_name"])
 
 
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("/home/stan/annotations/datasets_info.csv")
-    df.download = df.download.map(contains_list)
+    df = pd.read_csv("/home/stan/cytoimagenet/annotations/datasets_info.csv")
+    df.download = df.download.map(str_to_eval)
+    df.dropna(subset=["download"], inplace=True)
     download_nonexisting(df)
 
     # Remove empty directories
