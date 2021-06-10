@@ -4,8 +4,13 @@ import os
 import pandas as pd
 import webbrowser
 
-annotations_dir = "D:/projects/cytoimagenet/annotations/"
-data_dir = 'M:/ferrero/stan_data/'
+if True:
+    annotations_dir = "/home/stan/cytoimagenet/annotations/"
+    data_dir = '/ferrero/stan_data/'
+else:
+    annotations_dir = "D:/projects/cytoimagenet/annotations/"
+    data_dir = 'M:/ferrero/stan_data/'
+
 df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
 annotation_sets = os.listdir(annotations_dir)
 dl_sets = os.listdir(data_dir)
@@ -112,44 +117,51 @@ def create_metadata(dir_name: str) -> None:
     data_paths, data_names = get_data_paths(dir_name)
     row["path"] = None
     row["path"] = row["path"].astype("object")
-    row.at[0, "path"] = data_paths
+    row.at[row.index[0], "path"] = data_paths
     df_metadata = row.explode("path", ignore_index=True)
     df_metadata["filename"] = data_names
-    df_metadata["class"] = None
 
-    print(row.iloc[0])
+    def label_cycle(x):
+        if "interphase" in x:
+            return "interphase"
+        else:
+            return "mitosis"
 
-    # TODO: Infer labels from folder name
-    print("Subdirectories: " + str(os.listdir(data_dir + dir_name)))
-    if bool(input("Infer label from subdirectory? (Y) ")):
-        for label in os.listdir(data_dir + dir_name):
-            idx = df_metadata.path.str.contains(label)
-            idx = idx[idx]      # only True
-            df_metadata.loc[idx.index, "class"] = label
-        if bool(input("Change inferred labels? (Y)")):
-            dict_mapping = {}
-            for label in os.listdir(data_dir + dir_name):
-                change_label = input(f"Map {label} to ")
-                dict_mapping[label] = change_label
-            df_metadata["class"] = df_metadata["class"].map(dict_mapping)
-    else:
-        col_to_use = input("Use column: ")
-        while col_to_use not in useful_cols:  # Error Handling
-            col_to_use = input("Use column: ")
-
-        # if brightfield, use organism + cell_type as label
-        if col_to_use == "microscopy" and \
-                row.iloc[0]["microscopy"] == "brightfield":
-            label = row.iloc[0]["organism"]
-            if isinstance(row.iloc[0]["cell_type"], str):
-                label += f"-{row.iloc[0]['cell_type']}"
-
-        # TODO: Consider cases where other columns are used
-
-        df_metadata["class"] = label
+    df_metadata.phenotype = df_metadata.path.map(label_cycle)
 
     df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
                        index=False)
+    return
+
+    print(row.iloc[0])
+    # # TODO: Infer labels from folder name
+    # print("Subdirectories: " + str(os.listdir(data_dir + dir_name)))
+    # if bool(input("Infer label from subdirectory? (Y) ")):
+    #     for label in os.listdir(data_dir + dir_name):
+    #         idx = df_metadata.path.str.contains(label)
+    #         idx = idx[idx]      # only True
+    #         df_metadata.loc[idx.index, "class"] = label
+    #     if bool(input("Change inferred labels? (Y)")):
+    #         dict_mapping = {}
+    #         for label in os.listdir(data_dir + dir_name):
+    #             change_label = input(f"Map {label} to ")
+    #             dict_mapping[label] = change_label
+    #         df_metadata["class"] = df_metadata["class"].map(dict_mapping)
+    # else:
+    #     col_to_use = input("Use column: ")
+    #     while col_to_use not in useful_cols:  # Error Handling
+    #         col_to_use = input("Use column: ")
+    #
+    #     # if brightfield, use organism + cell_type as label
+    #     if col_to_use == "microscopy" and \
+    #             row.iloc[0]["microscopy"] == "brightfield":
+    #         label = row.iloc[0]["organism"]
+    #         if isinstance(row.iloc[0]["cell_type"], str):
+    #             label += f"-{row.iloc[0]['cell_type']}"
+    #
+    #     # TODO: Consider cases where other columns are used
+    #
+    #     df_metadata["class"] = label
 
 
 def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
@@ -163,8 +175,37 @@ def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
 
     for root, dir, files in os.walk(data_dir + dir_name):
         for file in files:
-            file_paths.append(root.replace("\\","/"))
-            file_names.append(file)
+            pic_format = ['.flex', '.bmp', '.tif', '.png', '.jpg', '.jpeg']
+            if any([i in file for i in pic_format]):  # filters for picture formats
+                file_paths.append(root.replace("\\","/"))
+                file_names.append(file)
 
     return file_paths, file_names
 
+
+def exists_meta(dir_name: str) -> None:
+    """Return True if metadata file exists and False otherwise."""
+    global annotation_sets
+    return any([f"{dir_name}_metadata" in meta for meta in annotation_sets])
+
+
+def rename_bbbc():
+    global dl_sets, df
+    for name in dl_sets:
+        if "bbbc" in name:
+            row = df[df.dir_name == name]
+            webbrowser.open(row.link.iloc[0])
+
+            new_name = "bbbc" + input("BBBC<name>: ").lower()
+
+            df.loc[row.index[0], 'dir_name'] = new_name
+            os.system(f"mv {data_dir}{name} {data_dir}{new_name}")
+            df.to_csv(f"{annotations_dir}datasets_info.csv", index=False)
+
+
+
+if __name__ == "__main__":
+    dir_name = "kag_cell_cycle"
+    # create_metadata(dir_name)
+else:
+    df_metadata = pd.read_csv(f"M:/home/stan/cytoimagenet/annotations/{dir_name}_metadata.csv")

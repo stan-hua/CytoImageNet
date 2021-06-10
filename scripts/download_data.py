@@ -22,8 +22,7 @@ def download(x: str, name: str) -> None:
 def download_nonexisting(df: pd.DataFrame) -> None:
     data_dir = "/ferrero/stan_data/"
 
-    # to_download = df.dir_name.map(lambda x: x not in os.listdir(data_dir))
-    to_download = df.dir_name.map(lambda x: "kag" not in x)
+    to_download = df.dir_name.map(lambda x: x not in os.listdir(data_dir))
     print(f"{len(to_download[to_download])} left to download!")
 
     for i in df.index:
@@ -50,4 +49,3 @@ if __name__ == "__main__":
 
     # Remove empty directories
     os.system("find /ferrero/stan_data -type d -empty -delete")
-

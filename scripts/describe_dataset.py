@@ -217,5 +217,5 @@ if __name__ == "__main__":
                      'cell_type', 'cell_component', 'phenotype', 'segmented?',
                      'class_sizes', 'dataset_size', 'width', 'height', 'format',
                      'channels', 'microscopy', 'num_plates', 'notes'])
-    get_annotations(df)
+    # get_annotations(df)
 
