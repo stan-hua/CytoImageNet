@@ -2,6 +2,7 @@ from describe_dataset import str_to_eval, contains_list, empty_input
 from typing import Union, Tuple, List, Optional
 import os
 import pandas as pd
+import numpy as np
 import webbrowser
 import random
 
@@ -16,7 +17,7 @@ df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
 annotation_sets = os.listdir(annotations_dir)
 dl_sets = os.listdir(data_dir)
 
-dir_name = "bbbc026"
+dir_name = "bbbc017"
 
 
 def create_metadata(dir_name: str = dir_name) -> None:
@@ -35,7 +36,6 @@ def create_metadata(dir_name: str = dir_name) -> None:
     row.at[row.index[0], "path"] = data_paths
     df_metadata = row.explode("path", ignore_index=True)
     df_metadata["filename"] = data_names
-
 
 
     df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
@@ -147,8 +147,7 @@ def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
 def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
     """Return True if metadata file exists and False otherwise."""
     try:
-        return pd.read_csv(f"M:/home/stan/cytoimagenet/annotations/"
-                           f"{dir_name}_metadata.csv")
+        return pd.read_csv(f"M:/home/stan/cytoimagenet/annotations/{dir_name}_metadata.csv")
     except:
         print("Does not exist!")
 
@@ -159,6 +158,8 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     print(f"{dir_name} metadata creation successful!")
 else:
     df_metadata = exists_meta(dir_name)
+    if not isinstance(df_metadata, None):
+        print(df_metadata.iloc[0])
 
 
 def utos(x):

@@ -1,20 +1,24 @@
 from describe_dataset import contains_list, str_to_eval
+from download_data import download
 import pandas as pd
 import os
 
 home_dir = "/home/stan"
-df = pd.read_csv(f"{home_dir}/annotations/datasets_info.csv")
+df = pd.read_csv(f"{home_dir}/cytoimagenet/annotations/datasets_info.csv")
 df = df.applymap(str_to_eval)
 
-eligible = df[df.dir_name.str.contains("rec")]
+eligible = df[df.dir_name.str.contains("idr")]
 
 for index in eligible.index:
     download_files = eligible.loc[index, "download"]
+    dir_name = eligible.loc[index, 'dir_name']
     os.chdir("/ferrero/stan_data/")
-    os.chdir(eligible.loc[index, 'dir_name'])
+    os.chdir(dir_name)
 
     if isinstance(download_files, list):
         for i in download_files:
-            os.system(f"wget -c {i}")
+            download(i, dir_name)
     else:
-        os.system(f"wget -c {download_files}")
+        download(download_files, dir_name)
+
+
