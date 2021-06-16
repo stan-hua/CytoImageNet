@@ -1,6 +1,6 @@
 """Convert RGB images to Grayscale.
 Assumption:
-    - channels do not represent different stains
+    - channels represent different stains
 
 """
 
@@ -21,20 +21,36 @@ else:
     annotations_dir = "D:/projects/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
 
-dir_name = "bbbc020"
+dir_name = "idr0067"
 
 possible_files = get_data_paths(dir_name)
 
+# Are each channel individual grayscale images (e.g. different stains)
+channels_meaningful = True
+
 # Indiscriminately convert all RGB images to grayscale. Save in dir
 for i in range(len(possible_files[1])):
-    img = bf.load_image(possible_files[0][i] + "/" + possible_files[1][i])
-    # Average along channels
-    img = img.mean(axis=2)
+    if ".png" in possible_files[1][i]:  # skip if already converted
+        continue
 
+    img = bf.load_image(possible_files[0][i] + "/" + possible_files[1][i])
+
+    if len(img.shape) == 3:
+        if channels_meaningful:
+            # Normalize with respect to each channel
+            for n in range(img.shape[2]):
+                img[:, :, n] = img[:, :, n] / img[:, :, n].max()
+
+        # Average along channels
+        img = img.mean(axis=2)
+    elif len(img.shape) == 2:
+        img = img / img.max()
+    else:
+        raise NotImplementedError(f"Case Not Handled when Channels == {len(img.shape)}!")
     # Normalize back to 0-255
     img = img * 255
 
-    Image.fromarray(img).convert("L").save(f"{data_dir}{dir_name}/{possible_files[1][i].replace('.TIF', '.png')}")
+    Image.fromarray(img).convert("L").save(f"{data_dir}{dir_name}/{possible_files[1][i].replace('.dv', '.png')}")
 
 print("Successful!")
 

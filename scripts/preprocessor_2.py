@@ -17,7 +17,7 @@ else:
     annotations_dir = "D:/projects/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
 
-dir_name = "rec_rxrx1"
+dir_name = "bbbc045"
 
 
 def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
@@ -28,81 +28,66 @@ def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
         raise Exception("Does not exist!")
 
 
-if not os.path.isdir(f"{data_dir}{dir_name}/merged"):
-    os.mkdir(f"{data_dir}{dir_name}/merged")
+def load_image(x) -> np.array:
+    return bf.load_image(x)
 
 
-def merger(paths: list, filenames: list, new_filename: str) -> None:
+def save_img(x, name, folder_name="merged") -> None:
+    if not os.path.isdir(f"{data_dir}{dir_name}/{folder_name}"):
+        os.mkdir(f"{data_dir}{dir_name}/{folder_name}")
+
+    Image.fromarray(x).convert("L").save(f"{data_dir}{dir_name}/{folder_name}/{name}")
+
+
+def merger(paths: list, filenames: list, new_filename: str) -> np.array:
     """Given list of paths + filenames to merge, do the following:
         1. Load in all images at paths
-        2. Normalize each photo from 0 to 1 by dividing by maximum intensity
+        2. Normalize each photo from 0 to 1 by dividing by maximum intensity of each channel
         3. Add all images and divide by number of images
         4. Save new image as PNG named <new_filename> in "merged" folder
     """
     img_stack = None
     for i in range(len(filenames)):
-        if img_stack is None:
-            img_stack = bf.load_image(paths[i] + "/" + filenames[i])
-            # Normalize Intensity
-            img_stack = img_stack/img_stack.max()
+        img = load_image(paths[i] + "/" + filenames[i])
+        img = img/img.max()
+        if type(img_stack) == type(None):
+            img_stack = img
         else:
-            img = bf.load_image(paths[i] + "/" + filenames[i])
-            # Normalize Intensity by dividing by max
-            img = img/img.max()
             img_stack = np.vstack([img_stack, img])
 
-    # Average along stack
-    img_stack = img_stack.mean(axis=0)
+    # Average along stack & Normalize to 0-255
+    img_stack = img_stack.mean(axis=0) * 255
 
-    # Normalize back to 0-255
-    img_stack = img_stack * 255
+    save_img(img_stack, new_filename)
 
-    Image.fromarray(img_stack).convert("L").save(f"{data_dir}{dir_name}/merged/{new_filename}")
 
+def slicer(img, x: tuple, y: tuple) -> np.array:
+    """Return sliced image.
+        -   <x> is a tuple of x_min and x_max.
+        -   <y> is a tuple of y_min and y_max.
+    """
+    return img[x[0]:x[1], y[0]:y[1]]
+
+
+def save_crops(x):
+    img = load_image(f"{x.path}/{x.filename}")
+    img_crop = slicer(img, (0, 715), (0, 825))
+
+    save_img(img_crop, x.new_name, "crop")
 
 
 if __name__ == "__main__":
-    df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
-    useful_cols = ["database", "name", "organism", "cell_type",
-                   "cell_component", "phenotype", "channels", "microscopy",
-                   "dir_name"]
-    row = df[df.dir_name == dir_name][useful_cols]
-    row.phenotype = None
-    row.channels = "f_nucleus|f_er|f_actin|f_nucleoli|f_mitochondria|f_golgi"
+    df_metadata = exists_meta(dir_name)
+    df_metadata["new_path"] = f"{data_dir}{dir_name}/crop"
+    df_metadata["new_name"] = df_metadata.apply(lambda x: x.path.split(
+        f"{dir_name}/")[1].replace(
+        "/", "_") + "_" + x.filename.replace(".tif", ".png"), axis=1)
 
-    df_metadata = pd.DataFrame(columns=useful_cols+["sirna", "path", "filename"])
+    # df_metadata.apply(save_crops, axis=1)
 
-    df_labels = pd.read_csv(f"{data_dir}{dir_name}/rxrx1/metadata.csv")
-
-    def create_path(x):
-        return f"{data_dir}{dir_name}/rxrx1/images/{x.experiment}/Plate{x.plate}"
-
-    def create_filename(x):
-        return f"{x.well}_s{x.site}"
-
-    df_labels["path"] = df_labels.apply(create_path, axis=1)
-    df_labels["filename"] = df_labels.apply(create_filename, axis=1)
-    for i in df_labels.index:
-        old_paths = [df_labels.loc[i, "path"]] * 6
-        old_names = [f"{df_labels.loc[i, 'filename']}_w{i}.png" for i in range(1,7)]
-        new_name = f"{df_labels.loc[i, 'experiment']}_{df_labels.loc[i, 'plate']}_{df_labels.loc[i, 'filename']}.png"
-
-        merger(old_paths, old_names, new_name)
-
-        # Add row to metadata
-        new_row = row.copy()
-        new_row["cell_type"] = df_labels.loc[i, "cell_type"]
-        if df_labels.loc[i, "cell_type"] != "EMPTY":
-            new_row["sirna"] = df_labels.loc[i, "cell_type"]
-        else:   # change EMPTY to no siRNA
-            new_row["sirna"] = None
-        new_row["filename"] = new_name
-
-        df_metadata = pd.concat([df_metadata, new_row], ignore_index=True)
-
-
-    # Fix file path
-    df_metadata.path = f"{data_dir}{dir_name}/merged"
-    df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv", index=False)
+    df_metadata["path"] = df_metadata["new_path"]
+    df_metadata["filename"] = df_metadata["new_name"]
+    df_metadata.drop(["new_path", "new_name"], axis=1, inplace=True)
+    df_metadata.to_csv(f"{annotations_dir}{dir_name}_metadata.csv", index=False)
 
 javabridge.kill_vm()

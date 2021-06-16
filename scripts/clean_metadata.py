@@ -17,7 +17,7 @@ df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
 annotation_sets = os.listdir(annotations_dir)
 dl_sets = os.listdir(data_dir)
 
-dir_name = "bbbc017"
+dir_name = "rec_rxrx1"
 
 
 def create_metadata(dir_name: str = dir_name) -> None:
@@ -36,21 +36,18 @@ def create_metadata(dir_name: str = dir_name) -> None:
     row.at[row.index[0], "path"] = data_paths
     df_metadata = row.explode("path", ignore_index=True)
     df_metadata["filename"] = data_names
+    col_mapper = {"Characteristics [Organism]": "organism", "Comment [Cell Line]": "cell_type",
+                  "Gene Symbol": "gene", "Channels": "channels"
+                  }
+    df_labels = pd.read_csv(f"{data_dir}{dir_name}/idr0080-screenA-annotation.csv")
+    df_labels.rename(columns=col_mapper, inplace=True)
 
+    df_metadata.cell_type = "dma1"   # assign most frequent since it's not possible to find indexer
+    # df_metadata.cell_component = df_metadata.path.map(label_component)
+    df_metadata.channels = df_metadata.cell_component.map(lambda x: "f_" + x)
 
     df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
                        index=False)
-    return
-
-    # TODO: Brightfield => Cell Body
-
-    #     # if brightfield, use organism + cell_type as label
-    #     if col_to_use == "microscopy" and \
-    #             row.iloc[0]["microscopy"] == "brightfield":
-    #         label = row.iloc[0]["organism"]
-    #         if isinstance(row.iloc[0]["cell_type"], str):
-    #             label += f"-{row.iloc[0]['cell_type']}"
-    #
 
 
 def metadownload(metadata: Union[str, list], dir_name: str) -> None:
@@ -136,7 +133,7 @@ def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
 
     for root, dir, files in os.walk(data_dir + dir_name):
         for file in files:
-            pic_format = ['.flex', '.bmp', '.tif', '.png', '.jpg', '.jpeg', ".BMP", ".Bmp", ".JPG", ".TIF", ".DIB", ".dib"]
+            pic_format = ['.flex', '.bmp', '.tif', '.png', '.jpg', '.jpeg', ".BMP", ".Bmp", ".JPG", ".TIF", ".DIB", ".dib", ".dv"]
             if any([i in file for i in pic_format]):  # filters for picture formats
                 file_paths.append(root.replace("\\","/"))
                 file_names.append(file)
@@ -158,7 +155,7 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     print(f"{dir_name} metadata creation successful!")
 else:
     df_metadata = exists_meta(dir_name)
-    if not isinstance(df_metadata, None):
+    if type(df_metadata) is not type(None):
         print(df_metadata.iloc[0])
 
 
