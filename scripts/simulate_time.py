@@ -1,13 +1,14 @@
 from typing import Optional
 import time
 
+import bioformats as bf
+import javabridge
+
 import pandas as pd
 import numpy as np
 import os
 from PIL import Image
 
-import bioformats as bf
-import javabridge
 
 if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -16,7 +17,7 @@ else:
     annotations_dir = "D:/projects/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
 
-dir_name = "bbbc022"
+dir_name = "idr0072"
 
 
 def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
@@ -27,21 +28,14 @@ def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
         raise Exception("Does not exist!")
 
 
-def load_image(x, loader="") -> np.array:
+def load_image(x, loader) -> np.array:
     if loader == "bf":
         return bf.load_image(x)
     else:
         return np.array(Image.open(x))
 
 
-def save_img(x, name, folder_name="merged") -> None:
-    if not os.path.isdir(f"{data_dir}{dir_name}/{folder_name}"):
-        os.mkdir(f"{data_dir}{dir_name}/{folder_name}")
-
-    Image.fromarray(x).convert("L").save(f"{data_dir}{dir_name}/{folder_name}/{name}")
-
-
-def merger(paths: list, filenames: list, new_filename: str, loader="") -> np.array:
+def merger(paths: list, filenames: list, new_filename: str, loader="bf") -> np.array:
     """Given list of paths + filenames to merge, do the following:
         1. Load in all images at paths
         2. Normalize each photo from 0 to 1 by dividing by maximum intensity of each channel
@@ -60,29 +54,31 @@ def merger(paths: list, filenames: list, new_filename: str, loader="") -> np.arr
     # Average along stack & Normalize to 0-255
     img_stack = img_stack.mean(axis=0) * 255
 
-    save_img(img_stack, new_filename)
-
-
-def slicer(img, x: tuple, y: tuple) -> np.array:
-    """Return sliced image.
-        -   <x> is a tuple of x_min and x_max.
-        -   <y> is a tuple of y_min and y_max.
-    """
-    return img[x[0]:x[1], y[0]:y[1]]
-
-
-def save_crops(x):
-    img = load_image(f"{x.path}/{x.filename}")
-    img_crop = slicer(img, (0, 715), (0, 825))
-
-    save_img(img_crop, x.new_name, "crop")
-
 
 if __name__ == "__main__":
     df_metadata = exists_meta(dir_name)
+    df_labels = pd.read_csv(f"{data_dir}{'bbbc022'}/BBBC022_v1_image.csv", error_bad_lines=False)
+
+    i = df_labels.index[0]
+    name = "_".join(df_labels.loc[i, "Image_FileName_OrigER"].split("_")[:3])
+    folder = df_labels.loc[i, "Image_PathName_OrigER"].replace("/", "")
+    idx = (df_metadata.filename.str.contains(name)) & (df_metadata.path.str.contains(folder))
+    old_paths = df_metadata.loc[idx]["path"].tolist()
+    old_names = df_metadata.loc[idx]["filename"].tolist()
 
 
+    for loader in ["bf", "PIL"]:
 
-
-
-
+        start = time.perf_counter()
+        if loader == "bf":
+            javabridge.start_vm(class_path=bf.JARS)
+            for i in range(100):
+                print(f"BioFormats loading images...")
+                merger(old_paths, old_names, name + ".png", loader=loader)
+            javabridge.kill_vm()
+        else:
+            for i in range(100):
+                print(f"{loader} loading images...")
+                merger(old_paths, old_names, name + ".png", loader=loader)
+        end = time.perf_counter()
+        print(f"{loader} took {end-start} seconds for 100 operations.")

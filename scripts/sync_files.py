@@ -7,4 +7,5 @@ os.system("cp D:/projects/cytoimagenet/annotations/datasets_info.csv "
           "M:/home/stan/cytoimagenet/annotations")
 
 # Get annotated datasets
-# os.system("cp -n M:/home/stan/cytoimagenet/annotations/* D:/projects/cytoimagenet/annotations/")
+# os.system("cp -n M:/home/stan/cytoimage
+# net/annotations/* D:/projects/cytoimagenet/annotations/")

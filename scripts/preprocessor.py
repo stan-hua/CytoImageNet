@@ -1,14 +1,10 @@
 from typing import Optional
 
-import javabridge
-import bioformats as bf
-
 import pandas as pd
 import numpy as np
 import os
 from PIL import Image
-
-javabridge.start_vm(class_path=bf.JARS)
+import time
 
 if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -18,7 +14,7 @@ else:
     data_dir = 'M:/ferrero/stan_data/'
 
 
-dir_name = "rec_rxrx19b"
+dir_name = "rec_rxrx2"
 
 
 def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
@@ -30,7 +26,7 @@ def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
 
 
 def load_image(x) -> np.array:
-    return bf.load_image(x)
+    return np.array(Image.open(x))
 
 
 def save_img(x, name, folder_name="merged") -> None:
@@ -80,15 +76,16 @@ def save_crops(x):
 
 if __name__ == "__main__":
     # Get and Prepare Given Metadata
-    df_labels = pd.read_csv(f"{data_dir}{dir_name}/rxrx19b/metadata.csv")
+    df_labels = pd.read_csv(f"{data_dir}{dir_name}/rxrx2/metadata.csv")
 
-    def create_path(x):
-        return f"{data_dir}{dir_name}/rxrx19b/images/{x.experiment}/Plate{x.plate}"
-
-    df_labels["path"] = df_labels.apply(create_path, axis=1)
+    df_labels["path"] = df_labels.apply(lambda x: f"{data_dir}{dir_name}/rxrx2/images/{x.experiment}/Plate{x.plate}", axis=1)
     df_labels["filename"] = df_labels.apply(lambda x: f"{x.well}_s{x.site}", axis=1)
 
+    n = 1
+
     for i in df_labels.index:
+        start = time.perf_counter()
+
         old_paths = [df_labels.loc[i, "path"]] * 6
         old_names = [f"{df_labels.loc[i, 'filename']}_w{i}.png" for i in range(1,7)]
         new_name = f"{df_labels.loc[i, 'experiment']}_{df_labels.loc[i, 'plate']}_{df_labels.loc[i, 'filename']}.png"
@@ -98,4 +95,8 @@ if __name__ == "__main__":
         else:
             print("File exists!")
 
-javabridge.kill_vm()
+        one_cycle = (time.perf_counter() - start)
+
+        n += 1
+        print(f"Progress: {round(100*n / len(df_labels))}%")
+        print(f"Time Remaining: {one_cycle * (len(df_labels) - n) / 60: .2f} minutes")

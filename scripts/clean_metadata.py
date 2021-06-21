@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import webbrowser
 import random
+import glob
+import d6tstack.combine_csv
 
 if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -14,11 +16,10 @@ else:
     data_dir = 'M:/ferrero/stan_data/'
 
 df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
-annotation_sets = os.listdir(annotations_dir)
-dl_sets = os.listdir(data_dir)
 
-dir_name = "rec_rxrx1"
+to_do = ["idr0016"]
 
+dir_name = to_do[0]
 
 def create_metadata(dir_name: str = dir_name) -> None:
     global df, data_dir, annotations_dir
@@ -33,93 +34,124 @@ def create_metadata(dir_name: str = dir_name) -> None:
     data_paths, data_names = get_data_paths(dir_name)
     row["path"] = None
     row["path"] = row["path"].astype("object")
+
+    row["channels"] = "f_nucleus|f_protein"
+    row["phenotype"] = None
+    row.drop(["organism", "cell_type"], axis=1, inplace=True)
+
     row.at[row.index[0], "path"] = data_paths
     df_metadata = row.explode("path", ignore_index=True)
     df_metadata["filename"] = data_names
-    col_mapper = {"Characteristics [Organism]": "organism", "Comment [Cell Line]": "cell_type",
-                  "Gene Symbol": "gene", "Channels": "channels"
+
+    col_mapper = {"Characteristics [Cell Line]": "cell_type",
+                  "Characteristics [Organism]": "organism",
+                  "Compound Name": "compound", "Compound MoA": "phenotype",
+                  "Comment [Gene Symbol]": "gene"
                   }
-    df_labels = pd.read_csv(f"{data_dir}{dir_name}/idr0080-screenA-annotation.csv")
+    df_labels = []
+    for f in glob.glob(f"{data_dir}{dir_name}/*.csv"):
+        if ".gz" in f:
+            df_labels.append(pd.read_csv(f, compression="gzip"))
+        else:
+            df_labels.append(pd.read_csv(f))
+    df_labels = pd.concat(df_labels, ignore_index=True)
     df_labels.rename(columns=col_mapper, inplace=True)
 
-    df_metadata.cell_type = "dma1"   # assign most frequent since it's not possible to find indexer
-    # df_metadata.cell_component = df_metadata.path.map(label_component)
-    df_metadata.channels = df_metadata.cell_component.map(lambda x: "f_" + x)
+    df_labels.cell_type = df_labels.cell_type.str.lower()
+    df_labels.gene = df_labels.gene.str.lower()
+    df_labels.organism = df_labels.organism.map(lambda x: "human" if x == "Homo sapiens" else "mouse")
+    df_labels["Comment [Protein Name Abbreviation]"] = df_labels["Comment [Protein Name Abbreviation]"].str.lower()
 
-    df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
-                       index=False)
+    df_labels.Plate = df_labels.Plate.str.replace("Landmark", "landmarks")
+
+    def get_well(x):
+        if "vamp_deg_" in x.lower() or "vamp_degbin" in x.lower() or "vamp1_deg_" in x.lower():
+            well = x.split("__")[2]
+            return well[0] + str(int(well[1:]))
+        elif "ws_nmumg_" in x.lower():
+            return None
+        else:
+            letter = chr(64 + int(x[:3]))
+            number = int(x[3:6])
+            return f"{letter}{number}"
+
+    def get_plate(x):
+        if "WS_" in x.path:
+            return "/".join(("WS_" + x.path.split("WS_")[1]).split("/")[:2])
+        elif "vamp_deg_" in x.filename.lower() or "vamp_degbin" in x.filename.lower() or "vamp1_deg_" in x.filename.lower():
+            return "/".join(x.filename.split("__")[:2])
+        elif "VAMP_" in x.path:
+            return "/".join(("VAMP_" + x.path.split("VAMP_")[1]).split("/")[:2])
+
+    df_metadata["Plate"] = df_metadata.apply(get_plate, axis=1)
+    df_metadata["Well"] = df_metadata.filename.map(get_well)
+    df_metadata.dropna(subset=["Well"], inplace=True)
+
+    df_metadata = pd.merge(df_metadata, df_labels, how="left", on=["Plate", "Well"])
+
+    df_metadata.filename = df_metadata.filename.str.replace(".tif", ".png")
+
+    def label_cell_component(x):
+        if x["Comment [Protein Name Abbreviation]"] is None or isinstance(x["Comment [Protein Name Abbreviation]"], float):
+            return "nucleus"
+        return "nucleus|" + x["Comment [Protein Name Abbreviation]"]
+
+    def label_channels(x):
+        if x["Comment [Protein Name Abbreviation]"] is None or isinstance(x["Comment [Protein Name Abbreviation]"], float):
+            return "f_nucleus"
+        return "f_nucleus|f_" + x["Comment [Protein Name Abbreviation]"]
+
+    df_metadata["cell_component"] = df_metadata.apply(label_cell_component, axis=1)
+    df_metadata.channels = df_metadata.apply(label_channels, axis=1)
+
+    cols = ['database', 'name', 'organism', 'cell_type', 'cell_component',
+            'phenotype', 'gene', 'channels', 'microscopy', 'dir_name',
+            'path', 'filename']
+
+    df_metadata.drop(['Plate', 'Well', 'Term Source 1 REF',
+                      'Term Source 1 Accession', 'Term Source 2 REF',
+                      'Term Source 2 Accession', 'Comment [Gene Identifier]',
+                      'Comment [Protein Name]', 'Comment [Protein Name Abbreviation]',
+                      'Protein Sequence (aa)', 'UniProt ID', 'Addgene ID',
+                      'Experimental Condition [Subcellular Localization]', 'Channels'], axis=1, inplace=True)
+
+    df_metadata.reindex(columns=cols).to_csv(
+        f"{annotations_dir}/{dir_name}_metadata.csv", index=False)
 
 
-def metadownload(metadata: Union[str, list], dir_name: str) -> None:
-    """Download metadata with the following convention:
-        - <dir_name>_metadata.csv
-        - if more than one, <dir_name>_metadata_(num occurence).csv
-    """
-    global annotations_dir
-    # Update known files in <annotations_dir>
-    annotation_sets = os.listdir(annotations_dir)
-    ann_series = pd.Series(annotation_sets)
-
-    if isinstance(metadata, list):
-        for i in metadata:
-            metadownload(i, dir_name)
-
-    # Base Case: if metadata is str
-    # Create filename
-    filename = f"{annotations_dir}{dir_name}_metadata"
-    while sum(ann_series.str.contains("filename")) > 0:
-        # Get number in filename
-        proc_number = filename.split('_')[-1].strip()
-        if proc_number in "0123456789":
-            filename = f"{annotations_dir}{dir_name}_metadata_" \
-                       f"{str(int(proc_number) + 1)}"
-        else:  # if no number in filename yet
-            filename = f"{annotations_dir}{dir_name}_metadata_1"
-    # Add file format
-    filename += f".{metadata.split('.')[-1]}"
-
-    # Download Metadata
-    os.system(f"wget {metadata} {annotations_dir}")
-    # Change filename to match convention
-    os.system(f"mv {annotations_dir}{metadata} {annotations_dir}{filename}")
+# if __name__ == "__main__":
+#     main_dir = "/ferrero/stan_data/idr0009/20150507-VSVG/VSVG/"
+#
+#     for i in df_metadata.index:
+#         # Skip if merged file exists
+#         if not os.path.exists(f"{data_dir}{dir_name}/merged/{df_metadata.loc[i, 'filename']}"):
+#             name = df_metadata.loc[i].filename
+#             old_paths = [main_dir + "/".join(name.split("^")[:-1])] * 3
+#             old_names = [name.split("^")[-1] + f"--{i}.tif" for i in ["nucleus-dapi", "pm-647", "vsvg-cfp"]]
+#             merger(old_paths, old_names, name)
 
 
-def get_metadata():
+
+def fix_column_headers():
+    filenames = list(glob.glob(f"{annotations_dir}*_metadata.csv"))
+
+    if not os.path.exists(f"{annotations_dir}clean/"):
+        os.mkdir(f"{annotations_dir}clean/")
+    d6tstack.combine_csv.CombinerCSV(filenames).to_csv_align(output_dir=f"{annotations_dir}clean/")
+
+
+def print_meta():
     """Download metadata (if available). Otherwise, ask for user input
         - If no metadata available in /annotations
         - dataset downloaded in /ferrero
     """
-    global annotation_sets, df, data_dir
-
-    ann_series = pd.Series(annotation_sets)  # convert filename list to Series
-
-    for i in df.index:
-        metadata_name = df.loc[i, "dir_name"] + "metadata"
-        # If metadata not downloaded AND dataset downloaded
-        if sum(ann_series.str.contains(metadata_name)) < 1 and \
-                df.loc[i, "dir_name"] in dl_sets:
-
-            # if there is a metadata dl link
-            if not isinstance(df.loc[i, "metadata_download"], float) and \
-                df.loc[i, "metadata_download"] is not None:
-                metadownload(df.loc[i, 'metadata_download'],
-                             df.loc[i, 'dir_name'])
-
-            # ask user input on where to download metadata
-            elif os.listdir(data_dir + df.loc[i, "dir_name"]):
-                webbrowser.open(df.loc[i, "link"])
-                new_meta_link = contains_list(
-                    empty_input(input("Metadata Download Link/s")))
-                df.loc[i, "metadata_download"] = new_meta_link
-
-                if new_meta_link is not None:
-                    metadownload(new_meta_link, df.loc[i, "dir_name"])
-                else:
-                    if bool(input("Create Metadata?")):
-                        create_metadata(df.loc[i, "dir_name"])
-
-    # Save changes to df
-    df.to_csv(f"{annotations_dir}datasets_info.csv", index=False)
+    global df, dir_name
+    to_download = str_to_eval(df[df.dir_name == dir_name].metadata_download.iloc[0])
+    if isinstance(to_download, str):
+        print(f"wget {to_download}")
+    else:
+        for i in to_download:
+            print(f"wget {i}")
 
 
 def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
@@ -133,7 +165,7 @@ def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
 
     for root, dir, files in os.walk(data_dir + dir_name):
         for file in files:
-            pic_format = ['.flex', '.bmp', '.tif', '.png', '.jpg', '.jpeg', ".BMP", ".Bmp", ".JPG", ".TIF", ".DIB", ".dib", ".dv"]
+            pic_format = ['.bmp', '.tif', '.png', '.jpg', '.jpeg', ".BMP", ".Bmp", ".JPG", ".TIF", ".DIB", ".dib", ".dv"] # '.flex' removed
             if any([i in file for i in pic_format]):  # filters for picture formats
                 file_paths.append(root.replace("\\","/"))
                 file_names.append(file)
