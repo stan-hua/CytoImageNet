@@ -6,7 +6,7 @@ import numpy as np
 
 import os
 import glob
-import d6tstack
+import time
 from copy import copy
 
 import matplotlib.pyplot as plt
@@ -42,7 +42,7 @@ def get_df_metadata() -> dd.DataFrame:
 
 def get_df_counts() -> pd.DataFrame:
     df_counts = []
-    for file in glob.glob(f"M:/home/stan/cytoimagenet/annotations/class_counts/*"):
+    for file in glob.glob(f"/home/stan/cytoimagenet/annotations/class_counts/*"):
         df_counts.append(pd.read_csv(file))
     df_counts = pd.concat(df_counts)
     df_counts.rename(columns={"Unnamed: 0": "label"},  inplace=True)
@@ -80,10 +80,6 @@ def save_counts():
 
     print(f"Shape: ({len(df_)}, {len(df_.columns)})")
 
-    df_ = df_.assign(idx=1)
-    df_["idx"] = df_.idx.cumsum() - 1
-    df_["used"] = 0
-
     for i in cols:
         df = copy(df_)
         df[i] = df[i].str.split("|")
@@ -112,9 +108,49 @@ def select_classes_uniquely() -> None:
             - Stratified sampling
             - Marks rows used as 'used' in full metadata dataframe
     """
+    # Minimum Number of Images Threshold
+    thresh = 287
+
+    # Get metadata dataframe
+    df_metadata = get_df_metadata()
+
+    print("Creating indexer...")
+
+    # Create index for every image
+    df_metadata = df_metadata.assign(idx=1)
+    df_metadata["idx"] = df_metadata.idx.cumsum() - 1
+
+    # Create variable to indicate if image is already part of a label
+    df_metadata["used"] = False
+    print("Done!")
+
+    print("Beginning to collect classes!")
+    # Get label counts
     df_counts = get_df_counts()
     df_counts.sort_values(by="counts", inplace=True)
+    df_counts = df_counts[df_counts.counts >= thresh].reset_index(drop=True)
 
+    # TODO: Select unique classes
+    n = 0
+    for i in df_counts.index:
+        # Track code runtime
+        n += 1
+        start = time.perf_counter()
+
+        label = df_counts.loc[i, "label"]
+        col = df_counts.loc[i, "category"]
+        save_class(df_metadata, col, label)
+
+        # Analyze code runtime
+        simul_time = time.perf_counter()-start
+        print(f"Saving one class took {simul_time} seconds.")
+        print(f"Expected Time to Finish: {simul_time * (len(df_counts) - n) / 60} minutes")
+
+        # TODO: Exit Early
+        n += 1
+        if n == 5:
+            print("Early Exit")
+            return
 
 
 def save_class(df, col: str, label: str) -> None:
@@ -134,7 +170,7 @@ def save_class(df, col: str, label: str) -> None:
     :param label: value in <col> to be used as a class
     """
     # TODO: Filter for rows with label
-    df_filtered = df[(df[col] == label) & (df['used'] == 0)]
+    df_filtered = df[(df[col] == label) & (df['used'] == False)]
     num_examples = len(df_filtered)
 
     # TODO: If # of rows <= 2000, save
@@ -145,13 +181,13 @@ def save_class(df, col: str, label: str) -> None:
         cols = ['organism', 'cell_type', 'cell_component', 'phenotype', 'gene', 'sirna', 'compound']
         cols.remove(col)
 
-        # TODO: Sample <= 2000 rows
+        # TODO: Stratified sample 1000 rows
         frac_to_sample = 1000 / num_examples
         df_filtered = df_filtered.groupby(cols, dropna=False).sample(frac=frac_to_sample).compute()
         df_filtered.to_parquet(f"{annotations_dir}/classes/{label}.parquet", index=False)
 
     used_indices = df_filtered["idx"]
-    df["used"] = df["idx"].where(df.idx in used_indices, 1)
+    df.map_partitions(lambda df_: df_.assign(used=df_["idx"].isin(used_indices) | df_["used"]))
 
 
 def plot_class_count():
@@ -175,9 +211,37 @@ def plot_class_count():
     plt.legend(loc='upper center')
 
 
+def plot_threshold():
+    df_counts = get_df_counts()
+
+    values = []
+    for i in range(100, 1000):
+        values.append((df_counts.counts >= i).sum())
+
+    df_thresh = pd.DataFrame({"threshold": range(100, 1000),
+                              "num_labels": values})
+    df_thresh = df_thresh[df_thresh.num_labels <= 1100].reset_index(drop=True)
+
+    ax = sns.scatterplot(data=df_thresh, x="threshold", y="num_labels")
+    ax.set(xlabel="# of Images Threshold", ylabel="# of Labels")
+    lims = [
+        np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+        np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+    ]
+
+    # now plot both limits against eachother
+    ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+    ax.set_aspect('equal')
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    df_diff = abs(df_thresh.threshold - df_thresh.num_labels)
+    print(df_thresh[df_diff == df_diff.min()])
+
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    save_counts()
+    # save_counts()
+    select_classes_uniquely()
     print(f"Success!")
 else:
     # plot_class_count()

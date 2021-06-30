@@ -18,7 +18,7 @@ else:
 
 df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
 
-dir_name = "kag_bacteria"
+dir_name = "bbbc017"
 
 
 def create_metadata(dir_name: str = dir_name) -> None:
@@ -29,82 +29,43 @@ def create_metadata(dir_name: str = dir_name) -> None:
                    "cell_component", "phenotype", "channels", "microscopy",
                    "dir_name"]
     row = df[df.dir_name == dir_name][useful_cols]
-    row["phenotype"] = None
     # Get file paths and names | Merge with row
     data_paths, data_names = get_data_paths(dir_name)
     row["path"] = None
     row["path"] = row["path"].astype("object")
 
-    row.cell_component = 'nucleus'
-    row.channels = "f_nucleus|brightfield"
-    row.microscopy = "fluorescence|brightfield"
+    row.cell_component = 'nucleus|actin'
+    row.channels = "f_nucleus|f_actin|f_mitosis"
+    row.drop(columns=["phenotype"], inplace=True)
 
     row.at[row.index[0], "path"] = data_paths
     df_metadata = row.explode("path", ignore_index=True)
     df_metadata["filename"] = data_names
 
-    label_map = {0: 'nucleoplasm', 1: "nuclear membrane", 2: "nucleoli",
-                 3: "nucleoli", 4: "nuclear speckles", 5: "nuclear bodies",
-                 6: "er", 7: "golgi",
-                 8: "intermediate filaments", 9: "actin", 10: "microtubules",
-                 11: "mitotic spindle", 12: "centrosome", 13: "cell membrane", 14: "mitochondria",
-                 15: "aggresome", 16: "cell body", 17: "vesicles", 18: None}
+    df_labels = pd.read_excel(f"{data_dir}{dir_name}/BBBC017_v1_metadata.xls")
+    df_labels.rename(columns={"class": "phenotype", "gene name": "gene"}, inplace=True)
+    df_labels.gene = df_labels.gene.str.lower()
+    df_labels.phenotype = df_labels["phenotype"].map(lambda x: None if x == "NONE" else x)
 
-    df_labels = pd.read_csv(f"{data_dir}{dir_name}/train.csv")
+    df_metadata["384-Plate#"] = df_metadata.path.map(lambda x: int(x.split("/")[-1][-3:]))
+    df_metadata["384-well"] = df_metadata.filename.map(lambda x: x.split("_")[-1][:3])
 
-    def get_multi_label(x):
-        int_labels = [int(g) for g in x.split("|")]
-        multi_labels = [label_map[int_label] for int_label in int_labels]
+    df_metadata.filename = df_metadata.filename.map(lambda x: x[:-6] + ".png")
+    df_metadata = df_metadata.drop_duplicates("filename")
 
-        # If None
-        if multi_labels == [None]:
-            return None
+    df_metadata = pd.merge(df_metadata, df_labels, how="left",
+                           on=["384-Plate#", "384-well"])
 
-        # Continue removing if popular labels in multi-label
-        num = 0
-        while len(multi_labels) > 1 and \
-                any([x in multi_labels for x in ["nucleus", "er", "actin",
-                                                 "golgi", "nucleoli",
-                                                 "mitochondria"]]):
-            if "nucleus" in multi_labels:
-                multi_labels.remove("nucleus")
-                continue
-            elif "er" in multi_labels:
-                multi_labels.remove("er")
-                continue
-            elif "golgi" in multi_labels:
-                multi_labels.remove("golgi")
-                continue
-            elif "nucleoli" in multi_labels:
-                multi_labels.remove("nucleoli")
-                continue
-            elif "mitochondria" in multi_labels:
-                multi_labels.remove("mitochondria")
-                continue
-            elif "actin" in multi_labels:
-                multi_labels.remove("actin")
-                continue
+    df_metadata.phenotype = df_metadata.phenotype.str.split(";").map(lambda x: "|".join(np.unique(x)) if isinstance(x, list) else None)
 
-        return "|".join(multi_labels)
+    df_metadata.drop(['384well-index', '384-Plate#', '384-quad', '384-well', '96-Plate#',
+                      '96-well', '96row', '96col', '384row', '384col', '384-well PlateName',
+                      '96-well PlateName', 'Row', 'Col', 'senseOligoId', 'location', 'Nmid',
+                      'taxonId', 'locuslinkId', 'Transcript Description',
+                      'SenseOligoSeq', 'ProdStatus', 'Unnamed: 24',
+                      'Unnamed: 25', 'plate order'], axis=1, inplace=True)
 
-    df_labels.Label = df_labels.Label.map(get_multi_label)
-    df_labels.set_index("ID", inplace=True)
-
-    def hpa_label(x):
-        if "_blue" in x:
-            return "nucleus"
-        elif "_red" in x:
-            return "microtubules"
-        elif "_yellow" in x:
-            return "er"
-        elif "_green" in x:
-            try:
-                return df_labels.loc[x.split("_green")[0]].Label
-            except KeyError:
-                return ""
-
-    df_metadata["cell_component"] = df_metadata.filename.map(hpa_label)
-    df_metadata["channels"] = df_metadata.cell_component.map(lambda x: f"f_{x}" if isinstance(x, str) and len(x) > 0 else "f_protein")
+    df_metadata.path = f"{data_dir}{dir_name}/merged"
 
     df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
                        index=False)
@@ -136,13 +97,14 @@ def get_data_paths(dir_name: str) -> Tuple[List[str], List[str]]:
 
     for root, dir, files in os.walk(data_dir + dir_name):
         for file in files:
-            pic_format = ['.bmp', '.tif', '.png', '.jpg', '.jpeg', ".BMP",
-                          ".Bmp", ".JPG", ".TIF", ".DIB", ".dib",
-                          ".dv"]  # '.flex' removed
-            if any([i in file for i in
-                    pic_format]):  # filters for picture formats
-                file_paths.append(root.replace("\\", "/"))
-                file_names.append(file)
+            if "merged" not in root:
+                pic_format = ['.bmp', '.tif', '.png', '.jpg', '.jpeg', ".BMP",
+                              ".Bmp", ".JPG", ".TIF", ".DIB", ".dib",
+                              ".dv"]  # '.flex' removed
+                if any([i in file for i in
+                        pic_format]):  # filters for picture formats
+                    file_paths.append(root.replace("\\", "/"))
+                    file_names.append(file)
 
     return file_paths, file_names
 
@@ -177,16 +139,18 @@ def fix_labels():
     for file in files:
         gc.collect()
         df = pd.read_csv(file, dtype={"cell_component": "category"})
+
         # df["microscopy"] = df["microscopy"].str.replace(" \(\?\)", "")
         # df["cell_component"] = df["cell_component"].map(lambda x: "nucleus" if x == "nuclei" else x)
         # df["phenotype"] = df["phenotype"].map(lambda x: None if x == "dmso" else x)
         try:
-            col = "cell_type"
-            label = "white blood cell \("
-            to = "white blood cell"
+            col = "gene"
+            label = "empty"
+            proteins = ["golgin84", "cytb5", "bik", "dtmd-vamp1", "mao", "galt", "pts-1", "rab5", "rab11", "kinase", "calr-kdel", "vamp5", "cco", "ergic53", "rab5a"]
+            to = None
             if df[col].str.lower().str.contains(label).sum() > 0:
                 # df[col] = df[col].str.lower().str.replace(label, to)
-                df[col] = df[col].str.lower().map(lambda x: "white blood cell" if "white blood cell \(" in x else x)
+                df[col] = df[col].map(lambda x: to if x == label else x)
                 df.to_csv(file, index=False)
                 print(f"Success! {col}: {label} -> {to}")
                 print(df.iloc[0].dir_name + f" contains {label} in {col}")
@@ -194,11 +158,26 @@ def fix_labels():
             pass
 
 
+def fix_gene():
+    """Add ' targeted' to gene labels of all metadata dataframes to distinguish
+    gene target from protein visible.
+    """
+    files = glob.glob(f"{annotations_dir}/clean/*_metadata.csv")
+    for file in files:
+        gc.collect()
+        df = pd.read_csv(file, dtype={"cell_component": "category"})
+
+        df["gene"] = df["gene"].map(lambda x: x + " targeted" if isinstance(x, str) and 'targeted' not in x else x)
+        df.to_csv(file, index=False)
+    print("Successful! " + f"' targeted' added to gene!")
+
+
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # create_metadata(dir_name)
     # print(f"{dir_name} metadata creation successful!")
     fix_labels()
     fix_column_headers()
+    fix_gene()
 else:
     df_metadata = exists_meta(dir_name)
     if type(df_metadata) is not type(None):
