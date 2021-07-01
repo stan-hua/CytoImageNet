@@ -33,6 +33,10 @@ def load_image(x) -> np.array:
 
 
 def save_img(x: str, name: str, dir_name: str, folder_name="merged") -> None:
+    """Save image at '/ferrero/stan_data/'<dir_name>/<folder_name>/<name>'
+        - <dir_name> refers to directory name of dataset
+        - <name> refers to new filename
+    """
     if not os.path.isdir(f"{data_dir}{dir_name}/{folder_name}"):
         os.mkdir(f"{data_dir}{dir_name}/{folder_name}")
 
@@ -73,56 +77,55 @@ def save_crops(x):
     img = load_image(f"{x.path}/{x.filename}")
     img_crop = slicer(img, (0, 715), (0, 825))
 
-    save_img(img_crop, x.new_name, "crop")
+    save_img(img_crop, x.new_name, x.dir_name, "crop")
 
 
 def create_image(x):
-    if not os.path.exists(x.path + "/" + x.filename):
-        name = x.filename
-        if x.dir_name == "rec_rxrx19a":
-            old_paths = [f"{name.split('_')[0]}/Plate{name.split('_')[1]}/"] * 5
-            old_names = [name.split('_')[2:] + f"w_{chan}" for chan in range(1,6)]
-        elif x.dir_name == "rec_rxrx19b":
-            old_paths = [f"{name.split('_')[0]}/Plate{name.split('_')[1]}/"] * 6
-            old_names = [name.split('_')[2:] + f"w_{chan}" for chan in range(1,7)]
-        elif x.dir_name == "idr0093":
-            old_names = [name.split("^")[-1][:-4] + str(i) + ".tif" for i in range(1, 6)]
-            old_paths = [f"{data_dir}{x.dir_name}/{'/'.join(name.split('^')[:-1])}"] * 5
-        elif x.dir_name == "idr0088":
-            old_names = [name.split("^")[-1].replace(".png", f"{i}.tif") for i in range(1, 4)]
-            old_paths = ["/ferrero/stan_data/idr0088/20200722-awss3/ds_hcs_02/PhenoPrintScreen/raw_images_for_IDR/" + "/".join(name.split("^")[:-1])]
-        elif x.dir_name == "idr0080":
-            old_paths = [f"{data_dir}{x.dir_name}/images/{'/'.join(name.split('^')[:-1])}"] * 5
-            old_names = [name.split("^")[-1].replace(".png", f"-ch{i}sk1fk1fl1.tiff") for i in range(1,6)]
-        elif x.dir_name == "idr0081":
-            old_names = [name.split("^")[-1][:-4] + str(i) + ".tif" for i in [1, 2]]
-            old_paths = [f"{data_dir}{x.dir_name}/" + "/".join(name.split("^")[:-1])] * 2
-        elif x.dir_name == "idr0003":
-            old_names = [name.split("_")[2].replace(".png", chan) for chan in ["--GFP.tif", "--Cherry.tif"]]
-            old_paths = [f"{data_dir}{x.dir_name}/201301120/Images/" + "/".join(name.split("_")[:2])] * 2
-        elif x.dir_name == "idr0009":
-            old_paths = ["/ferrero/stan_data/idr0009/20150507-VSVG/VSVG/" + "/".join(name.split("^")[:-1])] * 3
-            old_names = [name.split("^")[-1].replace(".png", f"--{ch}.tif") for ch in ["nucleus-dapi", "pm-647", "vsvg-cfp"]]
-        elif x.dir_name == "idr0016":
-            old_paths = [f"{data_dir}{x.dir_name}/{'/'.join(name.split('^')[:-1])}-{ch}" for ch in ["Mito", "Hoechst", "ERSytoBleed", "ERSyto", "Ph_golgi"]]
-            old_names = []
-            for p in old_paths:  # channels have different directories
-                _old_name = name.split('^')[-1].replace('.png', '')
-                file = glob.glob(f"{p}/{_old_name}*")[0]
-                old_names.append(_old_name + file.split(_old_name)[-1])
-        elif x.dir_name == "bbbc022":  # TODO: Change filename to contain all 6 names
-            df_labels = pd.read_csv(f"{data_dir}{x.dir_name}/BBBC022_v1_image.csv", error_bad_lines=False)
-            row = df_labels[df_labels["Image_FileName_OrigHoechst"] == name.replace(".png", ".tif")]
-            old_paths = [f"{data_dir}{x.dir_name}/BBBC022_v1_images_{row['Image_Metadata_PlateID']}w{g}" for g in range(1, 6)]
-            old_names = row.iloc[:, 1:6].values.flatten().tolist()
-        elif x.dir_name == "bbbc021":
-            files = glob.glob(f"{data_dir}{x.dir_name}/" + name.replace("^", "/").replace(".png", ""))
-            old_paths = [p.split("/")[:-1] for p in files]
-            old_names = [f.split("/")[-1] for f in files]
-        else:
-            raise NotImplementedError(f"{x.dir_name} merging not implemented!")
+    name = x.filename
+    if x.dir_name == "rec_rxrx19a":
+        old_paths = [f"{data_dir}{x.dir_name}/RxRx19a/images/{name.split('_')[0]}/Plate{name.split('_')[1]}/"] * 5
+        old_names = ["_".join(name.split('_')[2:]).replace(".png", f"_w{chan}.png") for chan in range(1,6)]
+    elif x.dir_name == "rec_rxrx19b":
+        old_paths = [f"{data_dir}{x.dir_name}/rxrx19b/images/{name.split('_')[0]}/Plate{name.split('_')[1]}/"] * 6
+        old_names = ["_".join(name.split('_')[2:]).replace(".png", f"_w{chan}.png") for chan in range(1,7)]
+    elif x.dir_name == "idr0093":
+        old_paths = [f"{data_dir}{x.dir_name}/{'/'.join(name.split('^')[:-1])}"] * 5
+        old_names = [name.split("^")[-1][:-4] + str(i) + ".tif" for i in range(1, 6)]
+    elif x.dir_name == "idr0088":
+        old_paths = [f"{data_dir}{x.dir_name}/20200722-awss3/ds_hcs_02/PhenoPrintScreen/raw_images_for_IDR/" + "/".join(name.split("^")[:-1])] * 3
+        old_names = [name.split("^")[-1].replace("A01", f"A0{i}").replace(".png", f"{i}.tif") for i in range(1, 4)]
+    elif x.dir_name == "idr0080":
+        old_paths = [f"{data_dir}{x.dir_name}/images/{'/'.join(name.split('^')[:-1])}"] * 5
+        old_names = [name.split("^")[-1].replace(".png", f"-ch{i}sk1fk1fl1.tiff") for i in range(1,6)]
+    elif x.dir_name == "idr0081":
+        old_paths = [f"{data_dir}{x.dir_name}/" + "/".join(name.split("^")[:-1])] * 2
+        old_names = [name.split("^")[-1][:-4] + str(i) + ".tif" for i in [1, 2]]
+    elif x.dir_name == "idr0003":
+        old_paths = [f"{data_dir}{x.dir_name}/201301120/Images/" + "/".join(name.split("_")[:2])] * 2
+        old_names = [name.split("_")[2].replace(".png", chan) for chan in ["--GFP.tif", "--Cherry.tif"]]
+    elif x.dir_name == "idr0009":
+        old_paths = [f"{data_dir}{x.dir_name}/20150507-VSVG/VSVG/" + "/".join(name.split("^")[:-1])] * 3
+        old_names = [name.split("^")[-1].replace(".png", f"--{ch}.tif") for ch in ["nucleus-dapi", "pm-647", "vsvg-cfp"]]
+    elif x.dir_name == "idr0016":
+        old_paths = [f"{data_dir}{x.dir_name}/{'/'.join(name.split('^')[:-1])}-{ch}" for ch in ["Mito", "Hoechst", "ERSytoBleed", "ERSyto", "Ph_golgi"]]
+        old_names = []
+        for p in old_paths:  # channels have different directories
+            _old_name = name.split('^')[-1].replace('.png', '')
+            file = glob.glob(f"{p}/{_old_name}*")[0]
+            old_names.append(_old_name + file.split(_old_name)[-1])
+    elif x.dir_name == "bbbc022":  # TODO: Change filename to contain all 6 names
+        df_labels = pd.read_csv(f"{data_dir}{x.dir_name}/BBBC022_v1_image.csv", error_bad_lines=False)
+        row = df_labels[df_labels["Image_FileName_OrigHoechst"] == name.replace(".png", ".tif")]
+        old_paths = [f"{data_dir}{x.dir_name}/BBBC022_v1_images_{row['Image_Metadata_PlateID']}w{g}" for g in range(1, 6)]
+        old_names = row.iloc[:, 1:6].values.flatten().tolist()
+    # elif x.dir_name == "bbbc021":  # bbbc021 is excluded for testing
+    #     files = glob.glob(f"{data_dir}{x.dir_name}/" + name.replace("^", "/").replace(".png", ""))
+    #     old_paths = [p.split("/")[:-1] for p in files]
+    #     old_names = [f.split("/")[-1] for f in files]
+    else:
+        raise NotImplementedError(f"{x.dir_name} merging not implemented!")
 
-        merger(old_paths, old_names, name, x.dir_name)
+    merger(old_paths, old_names, name, x.dir_name)
 
 if __name__ == "__main__":
     # Get and Prepare Given Metadata
