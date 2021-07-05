@@ -8,6 +8,7 @@ import random
 import glob
 import d6tstack.combine_csv
 import gc
+import json
 
 if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -18,32 +19,70 @@ else:
 
 df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
 
-dir_name = "rec_rxrx2"
+dir_name = "bbbc017"
 
 
 def create_metadata(dir_name: str = dir_name) -> None:
     global df, data_dir, annotations_dir
 
     # Columns for Metadata
-    # useful_cols = ["database", "name", "organism", "cell_type",
-    #                "cell_component", "phenotype", "channels", "microscopy",
-    #                "dir_name"]
-    # row = df[df.dir_name == dir_name][useful_cols]
-    # # Get file paths and names | Merge with row
-    # data_paths, data_names = get_data_paths(dir_name)
-    # row["path"] = None
-    # row["path"] = row["path"].astype("object")
-    #
-    # row.cell_component = 'nucleus|actin'
-    # row.channels = "f_nucleus|f_actin|f_mitosis"
-    # row.drop(columns=["phenotype"], inplace=True)
-    #
-    # row.at[row.index[0], "path"] = data_paths
-    # df_metadata = row.explode("path", ignore_index=True)
-    # df_metadata["filename"] = data_names
+    useful_cols = ["database", "name", "organism", "cell_type",
+                   "cell_component", "phenotype", "channels", "microscopy",
+                   "dir_name"]
+    row = df[df.dir_name == dir_name][useful_cols]
+    # Get file paths and names | Merge with row
+    data_paths, data_names = get_data_paths(dir_name)
+    row["path"] = None
+    row["path"] = row["path"].astype("object")
 
-    df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
-                       index=False)
+    row.cell_component = 'nucleus|actin'
+    row.channels = "f_nucleus|f_actin|f_mitosis"
+    row.drop(columns=["phenotype"], inplace=True)
+
+    row.at[row.index[0], "path"] = data_paths
+    df_metadata = row.explode("path", ignore_index=True)
+    df_metadata["filename"] = data_names
+
+    df_labels = pd.read_excel(f"{data_dir}{dir_name}/BBBC017_v1_metadata.xls")
+    df_labels.rename(columns={"class": "phenotype", "gene name": "gene"}, inplace=True)
+    df_labels.gene = df_labels.gene.str.lower()
+    df_labels.phenotype = df_labels["phenotype"].map(lambda x: None if x == "NONE" else x)
+
+    df_metadata["384-Plate#"] = df_metadata.path.map(lambda x: int(x.split("/")[-1][-3:]))
+    df_metadata["384-well"] = df_metadata.filename.map(lambda x: x.split("_")[-1][:3])
+
+    df_metadata.filename = df_metadata.filename.map(lambda x: x[:-6] + ".png")
+    df_metadata["new_name"] = df_metadata.apply(lambda x: x.path.split(dir_name + "/")[-1].replace("/", "^") + "^" + x.filename, axis=1)
+    print(df_metadata.new_name.iloc[0])
+    # Get new filename with path mapping
+    with open(f"{annotations_dir}/{dir_name}_name-path_mapping.json", 'w') as f:
+        json.dump(dict(zip(df_metadata.filename.to_list(),
+                           df_metadata.new_name.to_list())),
+                  f)
+
+
+    df_metadata = df_metadata.drop_duplicates("filename")
+
+
+
+    df_metadata = pd.merge(df_metadata, df_labels, how="left",
+                           on=["384-Plate#", "384-well"])
+
+    # df_metadata.phenotype = df_metadata.phenotype.str.split(";").map(lambda x: "|".join(np.unique(x)) if isinstance(x, list) else None)
+    df_metadata.phenotype = None
+
+    df_metadata.drop(['384well-index', '384-Plate#', '384-quad', '384-well', '96-Plate#',
+                      '96-well', '96row', '96col', '384row', '384col', '384-well PlateName',
+                      '96-well PlateName', 'Row', 'Col', 'senseOligoId', 'location', 'Nmid',
+                      'taxonId', 'locuslinkId', 'Transcript Description',
+                      'SenseOligoSeq', 'ProdStatus', 'Unnamed: 24',
+                      'Unnamed: 25', 'plate order'], axis=1, inplace=True)
+
+    df_metadata.path = f"{data_dir}{dir_name}/merged"
+
+    # df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
+    #                    index=False)
+
 
 
 def print_meta():
@@ -176,13 +215,42 @@ def add_indexer():
         print(f"Success! Indexer added to {df.loc[0, 'dir_name']}")
 
 
+def fix_filename():
+    """Fix error with idr0009 filenames"""
+    files = glob.glob(f"{annotations_dir}/classes/*.csv")
+    for i in files:
+        df = pd.read_csv(i)
+        if df.filename.str.contains(".pngdata\^").sum() > 0:
+            def fix_name_2(x):
+                if '.pngdata^' in x:
+                    return x.split(".pngdata^")[0] + ".png"
+                else:
+                    return x
+
+            df.filename = df.filename.map(fix_name_2)
+            df.to_csv(i, index=False)
+
+
+def which_passed():
+    """Return list of datasets whose metadata was curated successfully (pass
+    screen).
+    """
+    files = glob.glob(f"{annotations_dir}/*_metadata.csv")
+
+    return [x.split("\\")[1].split("_metadata")[0] for x in files]
+
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # create_metadata(dir_name)
     # print(f"{dir_name} metadata creation successful!")
-    fix_labels()
-    fix_column_headers()
-    fix_gene()
-    add_indexer()
+
+    # fix_labels()
+    # fix_column_headers()
+    # fix_gene()
+    # add_indexer()
+    # fix_filename()
+
+    # create_metadata()
+    pass
 else:
     df_metadata = exists_meta(dir_name)
     if type(df_metadata) is not type(None):

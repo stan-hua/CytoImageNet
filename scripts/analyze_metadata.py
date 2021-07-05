@@ -24,6 +24,7 @@ if "D:\\" not in os.getcwd():
 else:
     annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
+    plot_dir = "D:/projects/cytoimagenet/figures/classes/"
 
 
 def get_df_metadata() -> dd.DataFrame:
@@ -31,13 +32,13 @@ def get_df_metadata() -> dd.DataFrame:
     in /home/stan/cytoimagenet/annotations/clean/
     """
     return dd.read_csv(f"{annotations_dir}clean/*_metadata.csv",
-                       dtype={"organism": "category",
-                              "cell_type": "category",
-                              "cell_component": "category",
-                              "phenotype": "category",
-                              "gene": "category",
-                              "sirna": "category",
-                              "compound": "category",
+                       dtype={"organism": "object",
+                              "cell_type": "object",
+                              "cell_component": "object",
+                              "phenotype": "object",
+                              "gene": "object",
+                              "sirna": "object",
+                              "compound": "object",
                               "microscopy": "category",
                               "idx": "object"
                               })
@@ -101,6 +102,7 @@ def save_counts():
 
 
 def check_existing_classes() -> list:
+    """Return list of finished labels."""
     files = glob.glob(annotations_dir + "classes/*.csv")
     return [file.replace(annotations_dir + "classes/", "").replace(".csv", "") for file in files]
 
@@ -192,37 +194,39 @@ def save_class(df, col: str, label: str, used_indices: dict, num_datasets=None) 
 
     # Get number of examples
     num_examples = len(df_filtered)
+    # If # of rows < 257, remove
+    if num_examples < 257:
+        print(f"{col} label: {label} has <257 rows!")
+        return
 
     # If # of rows <= 1000, save
     if num_examples <= 1000:
         df_filtered = df_filtered.compute()
         df_filtered.to_csv(f"{annotations_dir}/classes/{label}.csv", index=False)
     else:
-
-        cols = ['organism', 'cell_type', 'cell_component', 'gene', 'sirna', 'compound']
+        cols = ['organism', 'cell_type', 'cell_component', 'gene', 'sirna', 'compound', 'phenotype']
         cols.remove(col)
 
         # If # of rows > 10000, preliminary stratified sampling to 10000 rows
         if num_examples > 10000:
-            if num_datasets > 1:   # downsample by dataset name
-                frac_to_sample = 10000 / num_examples
-                df_filtered = df_filtered.groupby(
-                    ["name", "organism", "cell_type"], dropna=False, group_keys=False).apply(
-                    lambda x: x.sample(frac=frac_to_sample))
-            else:  # downsample by organism and cell visible
-                frac_to_sample = 10000 / num_examples
-                df_filtered = df_filtered.groupby(
-                    ["name", "organism", "cell_type"], dropna=False, group_keys=False).apply(
-                    lambda x: x.sample(frac=frac_to_sample))
-                cols.remove("organism")
-                cols.remove("cell_type")
+            # downsample by dataset name, organism and cell type (excluding col)
+            frac_to_sample = 10000 / num_examples
+            to_downsample_by = ["name", "organism", "cell_type"]
+            if col in to_downsample_by:
+                to_downsample_by.remove(col)
+            for used_col in to_downsample_by:
+                if used_col != "name":
+                    cols.remove(used_col)
+
+            df_filtered = df_filtered.groupby(to_downsample_by, dropna=False, group_keys=False).apply(
+                lambda x: x.sample(frac=frac_to_sample))
 
         if col == "sirna":
             cols.remove("compound")
         elif col == "compound":
             cols.remove("sirna")
 
-        # Stratified sample 1000 rows from 10000
+        # Stratified sample 1000 rows from 10000+
         frac_to_sample = 1000 / 10000
         df_filtered = df_filtered.groupby(
             cols, dropna=False, group_keys=False).apply(
@@ -237,21 +241,24 @@ def plot_class_count():
     df_counts = get_df_counts()
     df_counts.sort_values(by="counts", ascending=False, inplace=True)
     df_counts["plot_counts"] = df_counts["counts"].map(lambda x: x if x <= 2000 else 2000)
+    df_counts.category = df_counts.category.map(lambda x: "cell_visible" if x == "cell_component" else x)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
     sns.stripplot(data=df_counts, x="plot_counts", y="category", jitter=True, orient="h", ax=ax)
     ax.set(xlim=(0, 2000), xlabel="Number of Images", ylabel="Labels by Category")
-    plt.axvline(x=200, color="gray", linestyle="--")
+    plt.axvline(x=287, color="gray", linestyle="--")
+    plt.savefig(f"{plot_dir}category_labels_vs_num_images.png")
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
     ax = sns.scatterplot(data=df_counts, x="plot_counts", y="num_datasets", hue="category")
     ax.set(xlim=(-0.5, 2010), xlabel="Number of Images", ylabel="Number of Datasets")
     plt.legend(loc='upper center')
-
-    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
-    ax = sns.scatterplot(data=df_counts, x="plot_counts", y="num_microscopy", hue="category")
-    ax.set(xlim=(-0.5, 2010), xlabel="Number of Images", ylabel="Number of Microscopy")
-    plt.legend(loc='upper center')
+    plt.savefig(f"{plot_dir}labels_vs_num_dataset.png")
+    #
+    # fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+    # ax = sns.scatterplot(data=df_counts, x="plot_counts", y="num_microscopy", hue="category")
+    # ax.set(xlim=(-0.5, 2010), xlabel="Number of Images", ylabel="Number of Microscopy")
+    # plt.legend(loc='upper center')
 
 
 def plot_threshold():
@@ -287,5 +294,5 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     select_classes_uniquely()
     print(f"Success!")
 else:
-    # plot_class_count()
-    df_counts = get_df_counts()
+    plot_class_count()
+    # df_counts = get_df_counts()

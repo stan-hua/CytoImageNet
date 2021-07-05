@@ -32,11 +32,14 @@ def check_exists(x):
         return True
 
     # If file does not exist
-    print(f"Creating images for {x.dir_name}")
-    start = time.perf_counter()
-    create_image(x)
-    print(f"Image Created in {time.perf_counter()-start} seconds!")
-    return False
+    try:
+        print(f"Creating images for {x.dir_name}")
+        start = time.perf_counter()
+        create_image(x)
+        print(f"Image Created in {time.perf_counter()-start} seconds!")
+        return True
+    except:
+        return False
 
 
 def create_crops(x):
@@ -47,7 +50,7 @@ if __name__ == '__main__':
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
     plot_dir = "/home/stan/cytoimagenet/figures/classes/"
 
-    for file in glob.glob(annotations_dir + "classes/*.csv"):
+    for file in glob.glob(annotations_dir + "classes/*.csv")[::-1]:
         df = pd.read_csv(file)
 
         label = file.replace(annotations_dir + "classes/", "").replace(".csv", "")
