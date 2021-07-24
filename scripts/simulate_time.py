@@ -68,7 +68,6 @@ if __name__ == "__main__":
 
 
     for loader in ["bf", "PIL"]:
-
         start = time.perf_counter()
         if loader == "bf":
             javabridge.start_vm(class_path=bf.JARS)

@@ -1,7 +1,5 @@
-from stratified_sampler import stratified_sample
-
 import dask.dataframe as dd
-from dask.delayed import delayed
+import dask
 import pandas as pd
 import numpy as np
 
@@ -34,7 +32,7 @@ def get_df_metadata() -> dd.DataFrame:
     return dd.read_csv(f"{annotations_dir}clean/*_metadata.csv",
                        dtype={"organism": "object",
                               "cell_type": "object",
-                              "cell_component": "object",
+                              "cell_visible": "object",
                               "phenotype": "object",
                               "gene": "object",
                               "sirna": "object",
@@ -80,7 +78,7 @@ def save_counts():
     """
     df_ = get_df_metadata()
 
-    cols = ["compound", "sirna", "gene", "phenotype", "cell_component", "cell_type", "organism"]
+    cols = ["compound", "sirna", "gene", "phenotype", "cell_visible", "cell_type", "organism"]
 
     print(f"Shape: ({len(df_)}, {len(df_.columns)})")
 
@@ -122,9 +120,7 @@ def select_classes_uniquely() -> None:
     thresh = 287
 
     # Get metadata dataframe
-    df_metadata = get_df_metadata()
-
-    print("Creating indexer...")
+    df_metadata = get_df_metadata().compute()
 
     # Load in used_indices if available
     if os.path.exists(f"{annotations_dir}classes/used_images.json"):
@@ -143,7 +139,7 @@ def select_classes_uniquely() -> None:
     # Check for existing classes
     done_labels = check_existing_classes()
 
-    # TODO: Select unique classes
+    # Select unique classes
     n = 0
     for i in df_counts.index:
         label = df_counts.loc[i, "label"]
@@ -157,11 +153,12 @@ def select_classes_uniquely() -> None:
         n += 1
         start = time.perf_counter()
 
-        save_class(df_metadata, col, label, used_indices, df_counts.loc[i, "num_datasets"])
+        save_class(df_metadata, col, label, used_indices,
+                   thresh=thresh)
 
         # Analyze code runtime
         simul_time = time.perf_counter() - start
-        print(f"Saving one class took {simul_time} seconds.")
+        print(f"Saving {label} took {simul_time} seconds.")
         print(f"Expected Time to Finish: {simul_time * (len(df_counts) - n) / 60} minutes")
 
         # Update json file
@@ -169,7 +166,7 @@ def select_classes_uniquely() -> None:
             json.dump(used_indices, f)
 
 
-def save_class(df, col: str, label: str, used_indices: dict, num_datasets=None) -> None:
+def save_class(df, col: str, label: str, used_indices: dict, thresh=287) -> None:
     """Save rows with <label> in <col> in a dataframe corresponding to label.
 
     If the label has <= 1000 examples, save filtered dataframe as is, and return
@@ -194,32 +191,41 @@ def save_class(df, col: str, label: str, used_indices: dict, num_datasets=None) 
 
     # Get number of examples
     num_examples = len(df_filtered)
-    # If # of rows < 257, remove
-    if num_examples < 257:
-        print(f"{col} label: {label} has <257 rows!")
+    # If # of rows < 287, remove
+    if num_examples < thresh:
+        print(f"{col} label: {label} has <287 rows!")
         return
 
     # If # of rows <= 1000, save
     if num_examples <= 1000:
-        df_filtered = df_filtered.compute()
+        df_filtered = df_filtered
         df_filtered.to_csv(f"{annotations_dir}/classes/{label}.csv", index=False)
     else:
-        cols = ['organism', 'cell_type', 'cell_component', 'gene', 'sirna', 'compound', 'phenotype']
-        cols.remove(col)
+        cols = ['organism', 'cell_type', 'cell_visible', 'sirna', 'compound', 'phenotype']
+        if col != "gene":
+            cols.remove(col)
 
         # If # of rows > 10000, preliminary stratified sampling to 10000 rows
         if num_examples > 10000:
             # downsample by dataset name, organism and cell type (excluding col)
             frac_to_sample = 10000 / num_examples
             to_downsample_by = ["name", "organism", "cell_type"]
+
+            # Remove columns already used to groupby for next groupby operation
             if col in to_downsample_by:
                 to_downsample_by.remove(col)
             for used_col in to_downsample_by:
                 if used_col != "name":
                     cols.remove(used_col)
 
-            df_filtered = df_filtered.groupby(to_downsample_by, dropna=False, group_keys=False).apply(
-                lambda x: x.sample(frac=frac_to_sample))
+            df_filtered = df_filtered.groupby(to_downsample_by, dropna=False, group_keys=False, sort=False).apply(
+                lambda x: x.sample(frac=frac_to_sample),)
+                # meta={'database': 'str', 'name': 'str', 'organism': 'object',
+                #       'cell_type': 'object', 'cell_visible': 'object',
+                #       'phenotype': 'object', 'channels': 'str', 'microscopy': 'str',
+                #       'dir_name': 'str', 'path': 'str', 'filename': 'str',
+                #       'gene': 'object', 'sirna': 'object', 'compound': 'object',
+                #       'idx': 'object'})
 
         if col == "sirna":
             cols.remove("compound")
@@ -227,21 +233,97 @@ def save_class(df, col: str, label: str, used_indices: dict, num_datasets=None) 
             cols.remove("sirna")
 
         # Stratified sample 1000 rows from 10000+
-        frac_to_sample = 1000 / 10000
-        df_filtered = df_filtered.groupby(
-            cols, dropna=False, group_keys=False).apply(
-            lambda x: x.sample(frac=frac_to_sample)).compute()
+        latest_num_examples = len(df_filtered)
+        print(f"With > 1000 rows, {label} has {latest_num_examples}")
+
+        frac_to_sample_2 = 1000 / latest_num_examples
+
+        draft_filtered = df_filtered.groupby(
+            cols, dropna=False, group_keys=False, sort=False).apply(
+            lambda x: x.sample(frac=frac_to_sample_2))
+
+        while len(draft_filtered) < 1000:
+            if len(draft_filtered) < 500:
+                frac_to_sample_2 += 0.03
+            else:
+                frac_to_sample_2 += 0.02
+
+            draft_filtered = df_filtered.groupby(
+                cols, dropna=False, group_keys=False, sort=False).apply(
+                lambda x: x.sample(frac=frac_to_sample_2))
+
+        # If still over 1000, randomly sample to get exactly 1000
+        if len(draft_filtered) > 1000:
+            draft_filtered = draft_filtered.sample(n=1000)
+
+        df_filtered = draft_filtered
+        print(f"{label} has {len(df_filtered)} rows after last sampling.")
+
+
         df_filtered.to_csv(f"{annotations_dir}/classes/{label}.csv", index=False)
 
     # Add indices used to dictionary
     used_indices.update(dict.fromkeys(df_filtered["idx"], label))
 
 
+def remove_classes_with_dir(dir_name: str) -> None:
+    """Remove classes with <dir_name>.
+        - Remove csv file
+        - Update json file to remove indexers
+    """
+    # Get Clean Metadata
+    df_metadata = pd.read_csv(f"{annotations_dir}/clean/{dir_name}_metadata.csv")
+
+    # Get Image Index to Label mapping
+    with open(f"{annotations_dir}classes/used_images.json") as f:
+        used_indices = json.load(f)
+
+    df_idx_label = pd.Series(used_indices).reset_index().rename(columns={"index": "idx", 0: "label"})
+    # Get dir_name
+    df_idx_label["dir_name"] = df_idx_label.idx.map(lambda x: x.split("-")[0])
+
+    # Get labels which contain dataset
+    labels = df_idx_label[df_idx_label["dir_name"] == dir_name].label.unique()
+
+    # Loop through label csvs with dataset <dir_name>
+    for label in labels:
+        # Delete label csv file
+        os.remove(f"{annotations_dir}/classes/{label}.csv")
+        # Remove indexers with label assignment
+        remove_indexers = df_idx_label[df_idx_label["label"] == label].idx
+        [used_indices.pop(i) for i in remove_indexers]
+
+    with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+        json.dump(used_indices, f)
+
+
+def remove_class(label: str) -> None:
+    """Remove <label>.csv and update used_indices.json
+    """
+
+    # Get Image Index to Label mapping
+    with open(f"{annotations_dir}classes/used_images.json") as f:
+        used_indices = json.load(f)
+
+    df_idx_label = pd.Series(used_indices).reset_index().rename(columns={"index": "idx", 0: "label"})
+    # Get dir_name
+    df_idx_label["dir_name"] = df_idx_label.idx.map(lambda x: x.split("-")[0])
+    [used_indices.pop(i, None) for i in df_idx_label[df_idx_label.label == label].idx.tolist()]
+
+    try:
+        os.remove(f"{annotations_dir}/classes/{label}.csv")
+    except:
+        pass
+
+    with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+        json.dump(used_indices, f)
+
+
 def plot_class_count():
     df_counts = get_df_counts()
     df_counts.sort_values(by="counts", ascending=False, inplace=True)
     df_counts["plot_counts"] = df_counts["counts"].map(lambda x: x if x <= 2000 else 2000)
-    df_counts.category = df_counts.category.map(lambda x: "cell_visible" if x == "cell_component" else x)
+    df_counts.category = df_counts.category.map(lambda x: "cell_visible" if x == "cell_visible" else x)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
     sns.stripplot(data=df_counts, x="plot_counts", y="category", jitter=True, orient="h", ax=ax)
@@ -291,8 +373,19 @@ def plot_threshold():
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # save_counts()
+    for file in glob.glob(f"{annotations_dir}classes/*.csv"):
+        df = pd.read_csv(file)
+        if len(df) <= 0:
+            os.remove(file)
+            print(f"Removed {file}")
+        # label = file.split("classes/")[-1].replace(".csv", "")
+        # remove_class(label)
+        # print(f"Removed {label}")
+
     select_classes_uniquely()
+
     print(f"Success!")
 else:
-    plot_class_count()
+    pass
+    # plot_class_count()
     # df_counts = get_df_counts()

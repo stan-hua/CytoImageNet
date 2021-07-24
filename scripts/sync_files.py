@@ -7,7 +7,8 @@ os.system("cp D:/projects/cytoimagenet/scripts/* "
 #           "M:/home/stan/cytoimagenet/annotations")
 
 # Get annotated datasets
-# os.system("cp -n M:/home/stan/cytoimagenet/annotations/* D:/projects/cytoimagenet/annotations/")
+# os.system("cp -n M:/home/stan/cytoimagenet/annotations/clean/ D:/projects/cytoimagenet/annotations/clean")
+# os.system("cp -n M:/home/stan/cytoimagenet/annotations/classes/ D:/projects/cytoimagenet/annotations/classes")
 
 # Sync figures
-os.system("cp -r M:/home/stan/cytoimagenet/figures/* D:/projects/cytoimagenet/figures/")
+# os.system("cp -r M:/home/stan/cytoimagenet/figures/* D:/projects/cytoimagenet/figures/")

@@ -26,7 +26,7 @@ dir_name = "None"
 def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
     """Return True if metadata file exists and False otherwise."""
     try:
-        return pd.read_csv(f"{annotations_dir}{dir_name}_metadata.csv")
+        return pd.read_csv(f"{annotations_dir}/clean/{dir_name}_metadata.csv")
     except:
         raise Exception("Does not exist!")
 
@@ -58,10 +58,30 @@ def merger(paths: list, filenames: list, new_filename: str, dir_name: str = dir_
     for i in range(len(filenames)):
         if os.path.exists(paths[i] + "/" + filenames[i]):
             img = load_image(paths[i] + "/" + filenames[i])
-            img = img/img.max()
+
+            # If RGB, convert to grayscale
+            if len(img.shape) == 3 and img.shape[-1] == 3:
+                img = img.mean(axis=-1)
+
+            # Get 0.1 and 99.9th percentile of pixel intensities
+            top_001 = np.percentile(img.flatten(), 99.9)
+            bot_001 = np.percentile(img.flatten(), 0.1)
+
+            # Limit maximum intensity to 0.99th percentile
+            img[img > top_001] = top_001
+            # Floor intensities below 0.1th percentile to 0.
+            img[img <= bot_001] = 0
+            # Then subtract by the 0.1th percentile intensity
+            img = img - bot_001
+
+            # Normalize between 0 and 1
+            img = img / img.max()
             img_stack.append(img)
         else:
             print(paths[i] + "/" + filenames[i] + " missing!")
+
+        if len(img_stack) == 0:
+            print("Error! No images loaded for: " + paths[i] + "/" + filenames[i])
 
     img_stack = np.stack(img_stack, axis=-1)
 
@@ -86,7 +106,17 @@ def save_crops(x):
     save_img(img_crop, x.new_name, x.dir_name, "crop")
 
 
-def create_image(x):
+def get_file_references(x):
+    """Return tuple containing
+        - paths to images
+        - old file names
+
+    Will be used in merging channels of the 'same' image. Same refers to the
+    same plate, well and field but captured for some fluorescent stain.
+
+    NOTE: Dataset-specific methods extract the old path from the current
+    filename.
+    """
     name = x.filename
     if x.dir_name == "rec_rxrx1":
         old_paths = [f"{data_dir}{x.dir_name}/rxrx1/images/{name.split('_')[0]}/Plate{name.split('_')[1]}/"] * 6
@@ -113,20 +143,33 @@ def create_image(x):
         old_paths = [f"{data_dir}{x.dir_name}/" + "/".join(name.split("^")[:-1])] * 2
         old_names = [name.split("^")[-1][:-4] + f"w{i}" + ".tif" for i in [1, 2]]
     elif x.dir_name == "idr0003":
-        old_paths = [f"{data_dir}{x.dir_name}/201301120/Images/" + "/".join(name.split("_")[:2])] * 2
-        old_names = [name.split("_")[2].replace(".png", chan) for chan in ["--GFP.tif", "--Cherry.tif"]]
+        if "cell_body" not in x.path:
+            old_paths = [f"{data_dir}{x.dir_name}/201301120/Images/" + "/".join(name.split("_")[:2])] * 2
+            old_names = [name.split("_")[2].replace(".png", chan) for chan in ["--GFP.tif", "--Cherry.tif"]]
+        else:
+            df_meta = exists_meta("idr0003")
+            df_meta = df_meta[df_meta.filename.str.contains(name.split("--Transmit")[0])]
+            another_name = df_meta[df_meta.channels != "brightfield"].iloc[0].filename
+            old_paths = [f"{data_dir}{x.dir_name}/201301120/Images/" + "/".join(another_name.split("_")[:2])]
+            old_names = [x.filename]
     elif x.dir_name == "idr0009":
         old_paths = [f"{data_dir}{x.dir_name}/20150507-VSVG/VSVG/" + "/".join(name.split("^")[:-1])] * 3
         old_names = [name.split("^")[-1].replace(".png", f"--{ch}.tif") for ch in ["nucleus-dapi", "pm-647", "vsvg-cfp"]]
     elif x.dir_name == "idr0016":
-        old_paths = [f"{data_dir}{x.dir_name}/{'/'.join(name.split('^')[:-1])}-{ch}" for ch in ["Mito", "Hoechst", "ERSytoBleed", "ERSyto", "Ph_golgi"]]
+        all_paths = [f"{data_dir}{x.dir_name}/{'/'.join(name.split('^')[:-1])}-{ch}" for ch in ["Mito", "Hoechst", "ERSytoBleed", "ERSyto", "Ph_golgi"]]
         old_names = []
-        for p in old_paths:  # channels have different directories
-            _old_name = name.split('^')[-1].replace('.png', '')
-            file = glob.glob(f"{p}/{_old_name}*")[0]
-            old_names.append(_old_name + file.split(_old_name)[-1])
+        old_paths = []
+        _old_name = name.split('^')[-1].replace('.png', '')
+        for k in range(len(all_paths)):  # channels have different directories
+            file = glob.glob(f"{all_paths[k]}/{_old_name}*")
+            if len(file) >= 1:
+                old_names.append(_old_name + file[0].split(_old_name)[-1])
+                old_paths.append(all_paths[k])
     elif x.dir_name == "bbbc022":
-        df_labels = pd.read_csv(f"{data_dir}{x.dir_name}/BBBC022_v1_image.csv", on_bad_lines='skip')
+        try:
+            df_labels = pd.read_csv(f"{data_dir}{x.dir_name}/BBBC022_v1_image.csv", error_bad_lines=False)
+        except:
+            df_labels = pd.read_csv(f"{data_dir}{x.dir_name}/BBBC022_v1_image.csv", on_bad_lines='skip')
         row = df_labels[df_labels["Image_FileName_OrigHoechst"] == name.replace(".png", ".tif")]
         old_paths = [f"{data_dir}{x.dir_name}/BBBC022_v1_images_{row['Image_Metadata_PlateID'].iloc[0]}w{g}" for g in [2, 1, 5, 4, 3]]
         old_names = row.iloc[:, 1:6].values.flatten().tolist()
@@ -141,43 +184,52 @@ def create_image(x):
             map_name = json.load(f)
         old_paths = [f"{data_dir}{x.dir_name}/" + "/".join(map_name[name].split("^")[:-1])] * 3
         old_names = [name.replace(".png", f"{chan}.DIB") for chan in ["d0", "d1", "d2"]]
-
     # elif x.dir_name == "bbbc021":  # bbbc021 is excluded for testing
     #     files = glob.glob(f"{data_dir}{x.dir_name}/" + name.replace("^", "/").replace(".png", ""))
     #     old_paths = [p.split("/")[:-1] for p in files]
     #     old_names = [f.split("/")[-1] for f in files]
     else:
-        raise NotImplementedError(f"{x.dir_name} merging not implemented!")
+        old_paths = None
+        old_names = None
+        print(f"{x.dir_name} merging not implemented!")
+
+    return old_paths, old_names
+
+
+def create_image(x):
+    """If image does not exist for image associated with metadata row <x>,
+    create image by merging channels.
+
+    NOTE: Finding reference to images is dataset-specific.
+    """
+    name = x.filename
+    old_paths, old_names = get_file_references(x)
+
+    # If image not applicable to be merged, early exit
+    if old_paths is None:
+        return
+
+    if len(old_paths) != len(old_names):
+        print(f"Length of Paths != Names for {x.dir_name}")
+
+    # Verify existence of each file
+    to_remove = []
+    for k in range(len(old_paths[:])):  # channels have different directories
+        if not os.path.exists(f"{old_paths[k]}/{old_names[k]}"):
+            to_remove.append(k)
+
+    old_paths = [old_paths[k] for k in range(len(old_paths)) if k not in to_remove]
+    old_names = [old_names[k] for k in range(len(old_names)) if k not in to_remove]
+
+    if len(old_paths) == 0:
+        print(f"Error! No images listed for {x.dir_name} at {old_paths[0]}/{old_names[0]}")
+        return
 
     merger(old_paths, old_names, name, x.dir_name)
 
+
 if __name__ == "__main__":
     pass
-    # # Get and Prepare Given Metadata
-    # df_labels = pd.read_csv(f"{data_dir}{dir_name}/rxrx2/metadata.csv")
-    #
-    # df_labels["path"] = df_labels.apply(lambda x: f"{data_dir}{dir_name}/rxrx2/images/{x.experiment}/Plate{x.plate}", axis=1)
-    # df_labels["filename"] = df_labels.apply(lambda x: f"{x.well}_s{x.site}", axis=1)
-    #
-    # n = 1
-    #
-    # for i in df_labels.index:
-    #     start = time.perf_counter()
-    #
-    #     old_paths = [df_labels.loc[i, "path"]] * 6
-    #     old_names = [f"{df_labels.loc[i, 'filename']}_w{i}.png" for i in range(1,7)]
-    #     new_name = f"{df_labels.loc[i, 'experiment']}_{df_labels.loc[i, 'plate']}_{df_labels.loc[i, 'filename']}.png"
-    #
-    #     if not os.path.isfile(f"{data_dir}{dir_name}/merged/{new_name}"):
-    #         merger(old_paths, old_names, new_name)
-    #     else:
-    #         print("File exists!")
-    #
-    #     one_cycle = (time.perf_counter() - start)
-    #
-    #     n += 1
-    #     print(f"Progress: {round(100*n / len(df_labels))}%")
-    #     print(f"Time Remaining: {one_cycle * (len(df_labels) - n) / 60: .2f} minutes")
 
 
 

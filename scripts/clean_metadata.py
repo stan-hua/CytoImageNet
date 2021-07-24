@@ -14,12 +14,12 @@ if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
     data_dir = '/ferrero/stan_data/'
 else:
-    annotations_dir = "D:/projects/cytoimagenet/annotations/"
+    annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
 
 df = pd.read_csv(f"{annotations_dir}datasets_info.csv")
 
-dir_name = "bbbc017"
+dir_name = "bbbc021"
 
 
 def create_metadata(dir_name: str = dir_name) -> None:
@@ -30,59 +30,67 @@ def create_metadata(dir_name: str = dir_name) -> None:
                    "cell_component", "phenotype", "channels", "microscopy",
                    "dir_name"]
     row = df[df.dir_name == dir_name][useful_cols]
+    row["cell_component"] = "nucleus|actin|microtubules"
+    row["channels"] = "f_nucleus|f_actin|f_microtubules"
+
+    row.drop(["phenotype"], axis=1, inplace=True)
+
     # Get file paths and names | Merge with row
     data_paths, data_names = get_data_paths(dir_name)
     row["path"] = None
     row["path"] = row["path"].astype("object")
-
-    row.cell_component = 'nucleus|actin'
-    row.channels = "f_nucleus|f_actin|f_mitosis"
-    row.drop(columns=["phenotype"], inplace=True)
-
     row.at[row.index[0], "path"] = data_paths
     df_metadata = row.explode("path", ignore_index=True)
     df_metadata["filename"] = data_names
 
-    df_labels = pd.read_excel(f"{data_dir}{dir_name}/BBBC017_v1_metadata.xls")
-    df_labels.rename(columns={"class": "phenotype", "gene name": "gene"}, inplace=True)
-    df_labels.gene = df_labels.gene.str.lower()
-    df_labels.phenotype = df_labels["phenotype"].map(lambda x: None if x == "NONE" else x)
+    # Load labels
+    df_labels_1 = pd.read_csv(f"{data_dir}{dir_name}/BBBC021_v1_image.csv")
+    df_labels_2 = pd.read_csv(f"{data_dir}{dir_name}/BBBC021_v1_moa.csv")
+    df_labels_3 =pd.read_csv(f"{data_dir}{dir_name}/BBBC021_v1_compound.csv")
 
-    df_metadata["384-Plate#"] = df_metadata.path.map(lambda x: int(x.split("/")[-1][-3:]))
-    df_metadata["384-well"] = df_metadata.filename.map(lambda x: x.split("_")[-1][:3])
+    df_labels = pd.merge(df_labels_1, df_labels_2, how="left",
+                         left_on=["Image_Metadata_Compound",
+                                  "Image_Metadata_Concentration"],
+                         right_on=["compound", "concentration"])
+    df_labels.rename(columns={"moa": "phenotype"}, inplace=True)
+    df_labels.compound = df_labels.compound.str.lower()
+    df_labels.phenotype = df_labels.phenotype.str.lower()
+    df_labels.phenotype = df_labels.phenotype.map(lambda x: x if x != "dmso" else None)
 
-    df_metadata.filename = df_metadata.filename.map(lambda x: x[:-6] + ".png")
-    df_metadata["new_name"] = df_metadata.apply(lambda x: x.path.split(dir_name + "/")[-1].replace("/", "^") + "^" + x.filename, axis=1)
-    print(df_metadata.new_name.iloc[0])
-    # Get new filename with path mapping
-    with open(f"{annotations_dir}/{dir_name}_name-path_mapping.json", 'w') as f:
-        json.dump(dict(zip(df_metadata.filename.to_list(),
-                           df_metadata.new_name.to_list())),
-                  f)
+    df_metadata_ = []
 
+    for chan in [1, 2, 4]:
+        if chan == 1:
+            col = "Image_FileName_DAPI"
+        elif chan == 2:
+            col = "Image_FileName_Tubulin"
+        elif chan == 4:
+            col = "Image_FileName_Actin"
 
-    df_metadata = df_metadata.drop_duplicates("filename")
+        meta_subset = df_metadata[df_metadata.filename.map(lambda x: x.split("_")[-1][1] == str(chan))]
+        meta_subset[col] = meta_subset["filename"]
+        df_metadata_.append(pd.merge(meta_subset, df_labels, how="left", on=[col]))
 
-
-
-    df_metadata = pd.merge(df_metadata, df_labels, how="left",
-                           on=["384-Plate#", "384-well"])
-
-    # df_metadata.phenotype = df_metadata.phenotype.str.split(";").map(lambda x: "|".join(np.unique(x)) if isinstance(x, list) else None)
-    df_metadata.phenotype = None
-
-    df_metadata.drop(['384well-index', '384-Plate#', '384-quad', '384-well', '96-Plate#',
-                      '96-well', '96row', '96col', '384row', '384col', '384-well PlateName',
-                      '96-well PlateName', 'Row', 'Col', 'senseOligoId', 'location', 'Nmid',
-                      'taxonId', 'locuslinkId', 'Transcript Description',
-                      'SenseOligoSeq', 'ProdStatus', 'Unnamed: 24',
-                      'Unnamed: 25', 'plate order'], axis=1, inplace=True)
-
+    df_metadata = pd.concat(df_metadata_)
+    df_metadata.drop_duplicates("Image_FileName_DAPI", inplace=True)
+    df_metadata.dropna(subset=["Image_FileName_DAPI"], inplace=True)
+    df_metadata.filename = df_metadata.apply(lambda x: x.path.split(f"{dir_name}/")[-1] + "^" + "_".join(x.filename.split("_")[:-1]) + ".png", axis=1)
     df_metadata.path = f"{data_dir}{dir_name}/merged"
 
-    # df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv",
-    #                    index=False)
+    df_metadata.drop(['TableNumber', 'ImageNumber', 'Image_FileName_DAPI',
+                      'Image_PathName_DAPI', 'Image_FileName_Tubulin',
+                      'Image_PathName_Tubulin', 'Image_FileName_Actin',
+                      'Image_PathName_Actin', 'Image_Metadata_Plate_DAPI',
+                      'Image_Metadata_Well_DAPI', 'Replicate', 'Image_Metadata_Compound',
+                      'Image_Metadata_Concentration', 'concentration'],
+                     axis=1, inplace=True)
 
+    cols = ['database', 'name', 'organism', 'cell_type', 'cell_component',
+            'phenotype', 'compound', 'channels', 'microscopy', 'dir_name',
+            'path', 'filename']
+
+    df_metadata.reindex(columns=cols).to_csv(
+        f"{annotations_dir}/{dir_name}_metadata.csv", index=False)
 
 
 def print_meta():
@@ -127,7 +135,7 @@ def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
     """Return metadata dataframe if file exists."""
     try:
         return pd.read_csv(
-            f"M:/home/stan/cytoimagenet/annotations/{dir_name}_metadata.csv")
+            f"{annotations_dir}unclean/{dir_name}_metadata.csv")
     except:
         print("Does not exist!")
 
@@ -136,7 +144,7 @@ def fix_column_headers():
     """ Align *_metadata.csv files to make them easily readable by Dask. Save to
     /home/stan/cytoimagenet/annotations/clean/
     """
-    filenames = list(glob.glob(f"{annotations_dir}*_metadata.csv"))
+    filenames = list(glob.glob(f"{annotations_dir}unclean/*_metadata.csv"))
     for filename in filenames:
         if "bbbc021" in filename:  # Keep BBBC021 for external validation
             filenames.remove(filename)
@@ -154,21 +162,21 @@ def fix_labels():
 
     for file in files:
         gc.collect()
-        df = pd.read_csv(file, dtype={"cell_component": "category"})
+        df = pd.read_csv(file, dtype={"cell_visible": "category"})
 
         # df["microscopy"] = df["microscopy"].str.replace(" \(\?\)", "")
-        # df["cell_component"] = df["cell_component"].map(lambda x: "nucleus" if x == "nuclei" else x)
+        # df["cell_visible"] = df["cell_visible"].map(lambda x: "nucleus" if x == "nuclei" else x)
         # df["phenotype"] = df["phenotype"].map(lambda x: None if x == "dmso" else x)
         try:
-            col = "compound"
-            label = "\*"
+            col = "cell_type"
+            label = "white blood cell"
             proteins = ["golgin84", "cytb5", "bik", "dtmd-vamp1", "mao", "galt",
                         "pts-1", "rab5", "rab11", "kinase", "calr-kdel",
                         "vamp5", "cco", "ergic53", "rab5a"]
-            to = " -- "
+            to = "white blood cell"
             if df[col].str.lower().str.contains(label).sum() > 0:
-                df[col] = df[col].str.lower().str.replace(label, to)
-                # df[col] = df[col].map(lambda x: to if x == label else x)
+                # df[col] = df[col].str.lower().str.replace(label, to)
+                df[col] = df[col].map(lambda x: to if label in x else x)
                 df.to_csv(file, index=False)
                 print(f"Success! {col}: {label} -> {to}")
                 print(df.iloc[0].dir_name + f" contains {label} in {col}")
@@ -190,23 +198,47 @@ def fix_gene():
     """Add ' targeted' to gene labels of all metadata dataframes to distinguish
     gene target from protein visible.
     """
-    files = glob.glob(f"{annotations_dir}/clean/*_metadata.csv")
+    files = glob.glob(f"{annotations_dir}/*_metadata.csv")
     for file in files:
         gc.collect()
-        df = pd.read_csv(file, dtype={"cell_component": "category"})
-        df.drop(columns=["Unnamed: 0"], inplace=True)
+        df = pd.read_csv(file, dtype={"gene": "object"})
+        try:
+            df.drop(columns=["Unnamed: 0"], inplace=True)
+        except:
+            pass
 
-        df["gene"] = df["gene"].map(lambda x: x + " targeted" if isinstance(x,
-                                                                            str) and 'targeted' not in x else x)
-        df.to_csv(file, index=False)
+        if 'gene' in df.columns:
+            df["gene"] = df["gene"].map(lambda x: x + " targeted" if isinstance(x, str) and 'targeted' not in x else x)
+            df.to_csv(file, index=False)
     print("Successful! " + f"' targeted' added to gene!")
+
+
+def fix_compound():
+    """Fix specific issues
+        - convert all strings to lower case
+    """
+    files = glob.glob(f"{annotations_dir}/*_metadata.csv")
+    for file in files:
+        gc.collect()
+        df = pd.read_csv(file, dtype={"gene": "object"})
+        try:
+            df.drop(columns=["Unnamed: 0"], inplace=True)
+        except:
+            pass
+        if 'compound' in df.columns:
+            try:
+                df["compound"] = df["compound"].str.lower()
+                df.to_csv(file, index=False)
+            except:
+                pass
+    print("Successful! Compound string converted to lower-case")
 
 
 def add_indexer():
     """Add indexer for all image metadata, following convention:
         - '<dir_name>_<index>'
     """
-    files = glob.glob(f"{annotations_dir}/clean/*_metadata.csv")
+    files = glob.glob(f"{annotations_dir}/*_metadata.csv")
     for file in files:
         gc.collect()
         df = pd.read_csv(file)
@@ -216,19 +248,10 @@ def add_indexer():
 
 
 def fix_filename():
-    """Fix error with idr0009 filenames"""
+    """Fix error with idr0009 and idr0041 filenames"""
     files = glob.glob(f"{annotations_dir}/classes/*.csv")
     for i in files:
         df = pd.read_csv(i)
-        if df.filename.str.contains(".pngdata\^").sum() > 0:
-            def fix_name_2(x):
-                if '.pngdata^' in x:
-                    return x.split(".pngdata^")[0] + ".png"
-                else:
-                    return x
-
-            df.filename = df.filename.map(fix_name_2)
-            df.to_csv(i, index=False)
 
 
 def which_passed():
@@ -239,17 +262,41 @@ def which_passed():
 
     return [x.split("\\")[1].split("_metadata")[0] for x in files]
 
+
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # create_metadata(dir_name)
     # print(f"{dir_name} metadata creation successful!")
 
-    # fix_labels()
     # fix_column_headers()
-    # fix_gene()
-    # add_indexer()
+    # import dask.dataframe as dd
+    #
+    # for file in glob.glob(f"{annotations_dir}classes/*.csv"):
+    #     gc.collect()
+    #     df = dd.read_csv(file,
+    #                      dtype={"organism": "object",
+    #                             "cell_type": "object",
+    #                             "cell_visible": "object",
+    #                             "phenotype": "object",
+    #                             "gene": "object",
+    #                             "sirna": "object",
+    #                             "compound": "object",
+    #                             "microscopy": "category",
+    #                             "idx": "object"
+    #                             })
+    #     if "cell_component" in df.columns:
+    #         df.rename(columns={'cell_component': 'cell_visible'}).compute().to_csv(file, index=False)
+    #         print("Success!")
     # fix_filename()
 
-    # create_metadata()
+
+    # files = glob.glob(annotations_dir + "classes/*.csv")
+    # a = 0
+    # for i in range(len(files)):
+    #     if "activin-b" in files[i]:
+    #         a = i
+    #         break
+    # print([file.replace(annotations_dir + "classes/", "").replace(".csv", "") for file in files[a:]])
+    # print(len(files[a + 1:]))
     pass
 else:
     df_metadata = exists_meta(dir_name)
