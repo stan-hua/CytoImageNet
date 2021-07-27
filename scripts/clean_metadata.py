@@ -288,16 +288,8 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     #         print("Success!")
     # fix_filename()
 
-
-    # files = glob.glob(annotations_dir + "classes/*.csv")
-    # a = 0
-    # for i in range(len(files)):
-    #     if "activin-b" in files[i]:
-    #         a = i
-    #         break
-    # print([file.replace(annotations_dir + "classes/", "").replace(".csv", "") for file in files[a:]])
-    # print(len(files[a + 1:]))
-    pass
+    files = glob.glob(annotations_dir + "classes/*.csv")
+    print(2*len(files)//3)
 else:
     df_metadata = exists_meta(dir_name)
     if type(df_metadata) is not type(None):

@@ -40,9 +40,15 @@ def get_image_origin(x):
     elif x.dir_name == "bbbc041":
         filenames = [f"{data_dir}{x.dir_name}/malaria/images/{x.filename.split('_')[0]}.png"]
     elif x.dir_name == "bbbc045":
-        filenames = [f"{data_dir}{x.dir_name}/Stained_Montages" +
-                "/".join(x.filename.split("Stained_Montages_")[1].split("_")[:4]) +
-                "ch" + x.filename.split("ch")[1].replace(".png", ".tif")]
+        if "2014" in x.filename or "2015" in x.filename:
+            old_file = f"{data_dir}{x.dir_name}/Stained_Montages" + "/"
+            old_file += "_".join(x.filename.split("Stained_Montages_")[1].split("_")[:2]) + "/"
+            old_file += "/".join(x.filename.split("Stained_Montages_")[1].split("_")[2:4]) + "/"
+            old_file += x.filename.split("_")[-2] + "_"
+            old_file += x.filename.split("_")[-1].replace(".png", ".tif")
+        else:
+            old_file = f"{data_dir}{x.dir_name}/Stained_Montages" + "/" + "/".join(x.filename.split("Stained_Montages_")[1].split("_")[:4]) + "_" + x.filename.split("_")[-1].replace(".png", ".tif")
+        filenames = [old_file]
     elif x.dir_name == "bbbc020":
         filenames = [f"{data_dir}{x.dir_name}/{x.filename.split('_')[0]}/{x.filename.replace('.png', '.TIF')}"]
     elif x.dir_name == "idr0067":

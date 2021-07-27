@@ -1,4 +1,5 @@
 from prepare_dataset import check_exists, construct_cytoimagenet
+from preprocessor import normalize
 
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -15,8 +16,14 @@ import matplotlib.pyplot as plt
 annotations_dir = "/home/stan/cytoimagenet/annotations/"
 model_dir = "/home/stan/cytoimagenet/model/"
 plot_dir = "/home/stan/cytoimagenet/figures/training/"
-
 cyto_dir = '/ferrero/cytoimagenet/'
+
+
+def preprocess_input(x):
+    if x.max() == 255 and x.min == 0:
+        return x / 255
+    else:
+        return normalize(x) / 255
 
 
 def load_dataset(batch_size: int = 256):
@@ -31,7 +38,7 @@ def load_dataset(batch_size: int = 256):
         - seed: 7779836983
 
     """
-    datagen = ImageDataGenerator(rescale=1/255.,
+    datagen = ImageDataGenerator(preprocessing_function=preprocess_input,
                                  validation_split=0.2)
     # Try
     # brightness_range=[0.6, 0.9]

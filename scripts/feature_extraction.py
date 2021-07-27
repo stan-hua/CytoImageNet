@@ -1,4 +1,5 @@
 from prepare_dataset import check_exists, check_file_extension, rename_extension, supplement_label
+from preprocessor import normalize
 from analyze_metadata import get_df_counts
 from clean_classes import check_sample_size
 
@@ -22,6 +23,9 @@ from tensorflow.keras.applications import EfficientNetB0
 # Set CPU only
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+tf.config.threading.set_inter_op_parallelism_threads(44)
+tf.config.threading.set_intra_op_parallelism_threads(44)
 
 # Limit number of GPU used to 1
 # tf.config.set_soft_device_placement(True)
@@ -114,17 +118,30 @@ def test_datagen(label: str, label_dir):
     return df
 
 
+def preprocess_input(x):
+    if x.max() == 255.0 and x.min() == 0.0:
+        print("Already Normalized!")
+        return x / 255.
+    elif x.max() == x.min():        # image improperly read by tensorflow
+        return x
+    else:
+        print(x.min(), x.max())
+        img = normalize(x)
+        img = np.stack([img] * 3, axis=-1)
+        return img
+
+
 def get_activations_for(model, label: str, directory: str = "imagenet-activations/base", label_dir: str = ""):
     """Load <model>. Extract activations for images under label.
     """
     # Create Image Generator for <label>
-    test_gen = ImageDataGenerator(rescale=1./255).flow_from_dataframe(
+    test_gen = ImageDataGenerator(preprocessing_function=preprocess_input).flow_from_dataframe(
         dataframe=test_datagen(label, label_dir),
         directory=None,
         x_col='full_name',
-        color_mode='rgb',
         batch_size=1,
         target_size=(224, 224),
+        color_mode='rgb',
         shuffle=False,
         class_mode=None,
         interpolation='bilinear',
@@ -251,9 +268,9 @@ def get_summary_similarities(embeds: pd.DataFrame, labels: np.array):
     """
     df = pd.DataFrame(columns=["label", "intra_cos", "inter_cos"])
     for label in np.unique(labels):
-        # TODO: Intra-Cosine Similarity
+        # Intra-Cosine Similarity
         intra_sims = np.array(intra_cos_sims(embeds[labels == label]))
-        # TODO: Inter-Cosine Similarity
+        # Inter-Cosine Similarity
         inter_sims = np.array(inter_cos_sims(embeds[labels == label],
                                              embeds[labels != label]))
 
@@ -297,15 +314,10 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
               'nematode', 'yeast', 'bacteria',
               ]
 
-    for label in chosen[::]:
-        # if not os.path.isfile(f"{model_dir}{activation_loc}{label}_activations.csv"):
-        #     check_sample_size(label)
+    for label in chosen[:]:
+        print(f"Beginning Feature Extraction for {label}!")
         features = get_activations_for(model, label, directory=activation_loc, label_dir="")
-
-        # TODO: Upsampled
         supplement_label(label)
         features = get_activations_for(model, label, directory=activation_loc+"upsampled/", label_dir="upsampled")
         print(f"Finished Feature Extraction for {label}!")
-
-
 

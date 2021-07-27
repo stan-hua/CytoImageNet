@@ -9,6 +9,7 @@ import json
 import pandas as pd
 import numpy as np
 from PIL import Image
+import cv2
 import matplotlib.pyplot as plt
 
 
@@ -32,10 +33,12 @@ def exists_meta(dir_name: str) -> Optional[pd.DataFrame]:
 
 
 def load_image(x) -> np.array:
-    return np.array(Image.open(x))
+    # PIL.Image.open()
+    # bioformats.load_image()
+    return cv2.imread(x)
 
 
-def save_img(x: str, name: str, dir_name: str, folder_name="merged") -> None:
+def save_img(x: np.array, name: str, dir_name: str, folder_name="merged") -> None:
     """Save image at '/ferrero/stan_data/'<dir_name>/<folder_name>/<name>'
         - <dir_name> refers to directory name of dataset
         - <name> refers to new filename
@@ -44,6 +47,36 @@ def save_img(x: str, name: str, dir_name: str, folder_name="merged") -> None:
         os.mkdir(f"{data_dir}{dir_name}/{folder_name}")
 
     Image.fromarray(x).convert("L").save(f"{data_dir}{dir_name}/{folder_name}/{name}")
+
+
+def normalize(img: np.array):
+    """Normalize image between [0, 1].
+        - Force new min intensity (0) to be the 0.1th percentile intensity
+        - Force new max intensity to be the 99.9th percentile intensity
+        - Divide by new max intensity
+        - Rescale to [0, 255]
+    """
+    # If RGB, convert to grayscale
+    if len(img.shape) == 3 and img.shape[-1] == 3:
+        img = img.mean(axis=-1)
+
+    # Get 0.1 and 99.9th percentile of pixel intensities
+    top_001 = np.percentile(img.flatten(), 99.9)
+    bot_001 = np.percentile(img.flatten(), 0.1)
+
+    # Limit maximum intensity to 0.99th percentile
+    img[img > top_001] = top_001
+
+    # Then subtract by the 0.1th percentile intensity
+    img = img - bot_001
+
+    # Round intensities below 0.1th percentile to 0.
+    img[img < 0] = 0
+
+    # Normalize between 0 and 1
+    img = img / img.max()
+
+    return img
 
 
 def merger(paths: list, filenames: list, new_filename: str, dir_name: str = dir_name) -> np.array:
@@ -58,52 +91,46 @@ def merger(paths: list, filenames: list, new_filename: str, dir_name: str = dir_
     for i in range(len(filenames)):
         if os.path.exists(paths[i] + "/" + filenames[i]):
             img = load_image(paths[i] + "/" + filenames[i])
-
-            # If RGB, convert to grayscale
-            if len(img.shape) == 3 and img.shape[-1] == 3:
-                img = img.mean(axis=-1)
-
-            # Get 0.1 and 99.9th percentile of pixel intensities
-            top_001 = np.percentile(img.flatten(), 99.9)
-            bot_001 = np.percentile(img.flatten(), 0.1)
-
-            # Limit maximum intensity to 0.99th percentile
-            img[img > top_001] = top_001
-            # Floor intensities below 0.1th percentile to 0.
-            img[img <= bot_001] = 0
-            # Then subtract by the 0.1th percentile intensity
-            img = img - bot_001
-
-            # Normalize between 0 and 1
-            img = img / img.max()
-            img_stack.append(img)
+            img_stack.append(normalize(img))
         else:
             print(paths[i] + "/" + filenames[i] + " missing!")
 
         if len(img_stack) == 0:
             print("Error! No images loaded for: " + paths[i] + "/" + filenames[i])
 
+    # Stack channel images. Then average along normalized channels.
     img_stack = np.stack(img_stack, axis=-1)
-
-    # Average along stack & Normalize to 0-255
-    img_stack = img_stack.mean(axis=-1) * 255
+    img_stack = img_stack.mean(axis=-1)
+    # Normalize between [0, 255]
+    img_stack = img_stack * 255
 
     save_img(img_stack, new_filename, dir_name=dir_name)
 
 
-def slicer(img, x: tuple, y: tuple) -> np.array:
-    """Return sliced image.
-        -   <x> is a tuple of x_min and x_max.
-        -   <y> is a tuple of y_min and y_max.
-    """
-    return img[x[0]:x[1], y[0]:y[1]]
+def preprocess_bbbc045():
+    """Preprocess white blood cell images from BBBC045."""
+    df_metadata = exists_meta("bbbc045")
 
+    with open(f"{annotations_dir}idx_to_original_images.json") as f:
+        idx_mapper = json.load(f)
 
-def save_crops(x):
-    img = load_image(f"{x.path}/{x.filename}")
-    img_crop = slicer(img, (0, 715), (0, 825))
+    def crop_wbc(x):
+        if x.idx in idx_mapper:
+            filename = x.filename
+            old_file = f"{data_dir}{x.dir_name}/Stained_Montages" + "/" + "/".join(filename.split("Stained_Montages_")[1].split("_")[:4]) + "_" + filename.split("_")[-1].replace(".png", ".tif")
 
-    save_img(img_crop, x.new_name, x.dir_name, "crop")
+            if "2014" in old_file or "2015" in old_file:
+                old_file = f"{data_dir}{x.dir_name}/Stained_Montages" + "/"
+                old_file += "_".join(filename.split("Stained_Montages_")[1].split("_")[:2]) + "/"
+                old_file += "/".join(filename.split("Stained_Montages_")[1].split("_")[2:4]) + "/"
+                old_file += filename.split("_")[-2] + "_"
+                old_file += filename.split("_")[-1].replace(".png", ".tif")
+            img = np.array(Image.open(old_file))
+            img = normalize(img)
+            img_crop = img[0:715, 0:825]
+            save_img(img_crop, x.filename, x.dir_name, "crop")
+            print('Saved~')
+    df_metadata.apply(crop_wbc, axis=1)
 
 
 def get_file_references(x):
@@ -229,8 +256,7 @@ def create_image(x):
 
 
 if __name__ == "__main__":
-    pass
-
+    preprocess_bbbc045()
 
 
 

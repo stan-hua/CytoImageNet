@@ -226,7 +226,6 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
         # Get Embeddings
         embeds, labels = create_umap(next_chosen, directory=f"imagenet-activations/{kind}/")
         # Plot U-Map labeled by category labels
-        print(embeds.shape, len(labels))
         plot_umap(embeds, labels, name=kind, save=True)
 
         # Convert to dataframe
@@ -236,7 +235,7 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
 
         # Get image paths to corresponding activations
         full_path = []
-        for label in np.unique(labels):
+        for label in next_chosen:
             full_path.extend(from_label_to_paths(label, kind))
         len(full_path)
         df_embed['full_path'] = full_path
