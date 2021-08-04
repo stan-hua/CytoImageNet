@@ -14,7 +14,7 @@ if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
     data_dir = '/ferrero/stan_data/'
 else:
-    annotations_dir = "D:/projects/cytoimagenet/annotations/"
+    annotations_dir = "/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
 
 dir_name = "idr0072"

@@ -287,9 +287,7 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     #         df.rename(columns={'cell_component': 'cell_visible'}).compute().to_csv(file, index=False)
     #         print("Success!")
     # fix_filename()
-
-    files = glob.glob(annotations_dir + "classes/*.csv")
-    print(2*len(files)//3)
+    pass
 else:
     df_metadata = exists_meta(dir_name)
     if type(df_metadata) is not type(None):

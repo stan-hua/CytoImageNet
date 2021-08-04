@@ -33,8 +33,16 @@ tf.config.threading.set_intra_op_parallelism_threads(44)
 
 
 # Global Variables
-model_dir = "/home/stan/cytoimagenet/model/"
-annotations_dir = "/home/stan/cytoimagenet/annotations/"
+if "D:\\" not in os.getcwd():
+    annotations_dir = "/home/stan/cytoimagenet/annotations/"
+    data_dir = '/ferrero/stan_data/'
+    model_dir = "/home/stan/cytoimagenet/model/"
+    plot_dir = "/home/stan/cytoimagenet/figures/"
+else:
+    annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
+    data_dir = 'M:/ferrero/stan_data/'
+    model_dir = "M:/home/stan/cytoimagenet/model/"
+    plot_dir = "M:/home/stan/cytoimagenet/figures/"
 
 
 def build_alexnet():
@@ -120,12 +128,10 @@ def test_datagen(label: str, label_dir):
 
 def preprocess_input(x):
     if x.max() == 255.0 and x.min() == 0.0:
-        print("Already Normalized!")
         return x / 255.
     elif x.max() == x.min():        # image improperly read by tensorflow
         return x
     else:
-        print(x.min(), x.max())
         img = normalize(x)
         img = np.stack([img] * 3, axis=-1)
         return img
@@ -283,8 +289,17 @@ def get_summary_similarities(embeds: pd.DataFrame, labels: np.array):
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # Choose model
     model_choice = "efficient"
+    weights = 'cytoimagenet'              # 'imagenet' or None
+    print("weights: ", weights)
+    # Directory to save activations
+    if weights is None:
+        activation_loc = "random_model-activations/"
+    elif weights == "cytoimagenet":
+        activation_loc = "cytoimagenet-activations/"
+    else:
+        activation_loc = "imagenet-activations/"
 
-    # Build model.
+    # Construct Model
     if model_choice == "alex":  # Randomly Initialized AlexNet
         model = build_alexnet()
         # model.save_weights(f"{model_dir}random_alex.h5")
@@ -292,32 +307,55 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
 
         # Directory to save activations
         activation_loc = "random_model-activations/"
-        prefix = 'random'
-    else:   # Pre-trained EfficientNetB0
-        model = EfficientNetB0(weights="imagenet",
-                               include_top=False,
-                               input_shape=(224, 224, 3),
-                               pooling="max")
-        model.trainable = False
+        prefix = 'random'   # AlexNet
+    else:   # EfficientNetB0
+        if weights == "cytoimagenet":
+            cyto_weights_dir = "/home/stan/cytoimagenet/model/cytoimagenet-weights/random_init/"
+            model = Sequential()
+            # Add efficientnet architecture
+            model.add(EfficientNetB0(weights=None,
+                                     include_top=False,
+                                     input_shape=(224, 224, 3),
+                                     pooling="max"))
+            # Prediction layer
+            model.add(Dense(902, activation="softmax"))
+            # Load weights
+            model.load_weights(f"{cyto_weights_dir}efficientnetb0_from_random-epoch_10.h5")
+            # Remove prediction layer
+            model.layers.pop()
 
-        # Directory to save activations
-        activation_loc = "imagenet-activations/"
-        prefix = 'imagenet'
+        else:
+            model = EfficientNetB0(weights=weights,
+                                   include_top=False,
+                                   input_shape=(224, 224, 3),
+                                   pooling="max")
+        model.trainable = False
 
     # labels = []
     # for file in glob.glob(f"{annotations_dir}classes/*.csv"):
     #     labels.append(file.split("classes/")[-1].replace(".csv", ""))
 
     chosen = ['human', 'nucleus', 'cell membrane',
-              'white blood cell', 'kinase',
-              'wildtype', 'difficult',
-              'nematode', 'yeast', 'bacteria',
-              ]
+               'white blood cell', 'kinase',
+               'wildtype', 'difficult',
+               'nematode', 'yeast', 'bacteria',
+               'vamp5 targeted', 'uv inactivated sars-cov-2',
+               'trophozoite', 'tamoxifen', 'tankyrase inhibitor',
+               'dmso', 'rho associated kinase inhibitor', 'rna',
+               'rna synthesis inhibitor', 'cell body'
+               ]
 
-    for label in chosen[:]:
+    random_classes = ['fgf-20', 'hpsi0513i-golb_2', 'distal convoluted tubule',
+                      'fcgammariia', 'pentoxifylline', 'oxybuprocaine', 'il-27',
+                      'phospholipase inhibitor', 'estropipate', 'tl-1a',
+                      'methacholine', 'cdk inhibitor', 'cobicistat', 'il-28a',
+                      'dna synthesis inhibitor', 'lacz targeted',
+                      'ccnd1 targeted', 's7902', 'clofarabine', 'ficz']
+
+    for label in random_classes:
         print(f"Beginning Feature Extraction for {label}!")
-        features = get_activations_for(model, label, directory=activation_loc, label_dir="")
-        supplement_label(label)
+        features = get_activations_for(model, label, directory=activation_loc+"base/", label_dir="")
+        # supplement_label(label)
         features = get_activations_for(model, label, directory=activation_loc+"upsampled/", label_dir="upsampled")
         print(f"Finished Feature Extraction for {label}!")
 

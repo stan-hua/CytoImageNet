@@ -11,4 +11,4 @@ os.system("cp D:/projects/cytoimagenet/scripts/* "
 # os.system("cp -n M:/home/stan/cytoimagenet/annotations/classes/ D:/projects/cytoimagenet/annotations/classes")
 
 # Sync figures
-# os.system("cp -r M:/home/stan/cytoimagenet/figures/* D:/projects/cytoimagenet/figures/")
+os.system("cp -r M:/home/stan/cytoimagenet/figures/* D:/projects/cytoimagenet/figures/")

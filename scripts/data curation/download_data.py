@@ -39,8 +39,6 @@ def download_nonexisting(df: pd.DataFrame) -> None:
             download(df.loc[i, "download"], df.loc[i, "dir_name"])
 
 
-
-
 if __name__ == "__main__":
     df = pd.read_csv("/home/stan/cytoimagenet/annotations/datasets_info.csv")
     df.download = df.download.map(str_to_eval)

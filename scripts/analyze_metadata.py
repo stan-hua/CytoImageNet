@@ -3,6 +3,7 @@ import dask
 import pandas as pd
 import numpy as np
 
+import multiprocessing
 import json
 import os
 import glob
@@ -25,21 +26,24 @@ else:
     plot_dir = "D:/projects/cytoimagenet/figures/classes/"
 
 
-def get_df_metadata() -> dd.DataFrame:
-    """Return lazy dask dataframe containing reference to all *_metadata.csv
+def get_df_metadata() -> pd.DataFrame:
+    """Return dataframe containing reference to all *_metadata.csv
     in /home/stan/cytoimagenet/annotations/clean/
     """
-    return dd.read_csv(f"{annotations_dir}clean/*_metadata.csv",
-                       dtype={"organism": "object",
-                              "cell_type": "object",
-                              "cell_visible": "object",
-                              "phenotype": "object",
-                              "gene": "object",
-                              "sirna": "object",
-                              "compound": "object",
-                              "microscopy": "category",
-                              "idx": "object"
-                              })
+    # return dd.read_csv(f"{annotations_dir}clean/*_metadata.csv",
+    #                    dtype={"organism": "object",
+    #                           "cell_type": "object",
+    #                           "cell_visible": "object",
+    #                           "phenotype": "object",
+    #                           "gene": "object",
+    #                           "sirna": "object",
+    #                           "compound": "object",
+    #                           "microscopy": "category",
+    #                           "idx": "object"
+    #                           })
+    files = glob.glob(f"{annotations_dir}clean/*_metadata.csv")
+    dfs = [pd.read_csv(file) for file in files]
+    return pd.concat(dfs)
 
 
 def get_df_counts() -> pd.DataFrame:
@@ -86,10 +90,10 @@ def save_counts():
         df = copy(df_)
         df[i] = df[i].str.split("|")
         df = df.explode(i)
-        df_col = df.loc[:, i].value_counts().to_frame().rename(columns={i: "counts"}).compute()
+        df_col = df.loc[:, i].value_counts().to_frame().rename(columns={i: "counts"})
 
-        num_datasets = df.groupby(i)["name"].nunique().compute()
-        num_microscopy = df.groupby(i)["microscopy"].nunique().compute()
+        num_datasets = df.groupby(i)["name"].nunique()
+        num_microscopy = df.groupby(i)["microscopy"].nunique()
 
         df_col["num_datasets"] = df_col.index.map(lambda x: num_datasets[x])
         df_col["num_microscopy"] = df_col.index.map(lambda x: num_microscopy[x])
@@ -105,12 +109,13 @@ def check_existing_classes() -> list:
     return [file.replace(annotations_dir + "classes/", "").replace(".csv", "") for file in files]
 
 
+# CREATING LABELS
 def select_classes_uniquely() -> None:
     """ Select unique rows for each label passing the threshold. Saves
     dataframe for each label.
 
     Algorithm:
-        - Iterate through labels whose image count > 400 from saved count dataframe.
+        - Iterate through labels whose image count >= 287 from saved count dataframe.
         - Filter full metadata dataframe for the label and not 'used'
         - Save rows assigned to the label.
             - Stratified sampling
@@ -120,7 +125,7 @@ def select_classes_uniquely() -> None:
     thresh = 287
 
     # Get metadata dataframe
-    df_metadata = get_df_metadata().compute()
+    df_metadata = get_df_metadata()
 
     # Load in used_indices if available
     if os.path.exists(f"{annotations_dir}classes/used_images.json"):
@@ -153,6 +158,7 @@ def select_classes_uniquely() -> None:
         n += 1
         start = time.perf_counter()
 
+        # Save class
         save_class(df_metadata, col, label, used_indices,
                    thresh=thresh)
 
@@ -266,6 +272,90 @@ def save_class(df, col: str, label: str, used_indices: dict, thresh=287) -> None
     used_indices.update(dict.fromkeys(df_filtered["idx"], label))
 
 
+# CREATE UNUSED CLASSES
+def select_unused_classes_uniquely(num_classes: int) -> None:
+    """ Select unique rows for <n> labels below the threshold. Saves
+    dataframe for each label.
+
+    Algorithm:
+        - Iterate through labels whose image count < 287 from saved count dataframe.
+        - Filter full metadata dataframe for the label and not 'used'
+        - Save rows assigned to the label.
+            - Stratified sampling
+            - Marks rows used as 'used' in full metadata dataframe
+    """
+    # Minimum Number of Images Threshold
+    thresh = 287
+
+    # Get metadata dataframe
+    df_metadata = get_df_metadata()
+
+    # Load in used_indices if available
+    if os.path.exists(f"{annotations_dir}classes/used_images.json"):
+        with open(f"{annotations_dir}classes/used_images.json") as f:
+            used_indices = json.load(f)
+    else:
+        # Create var to indicate if image (index) is already part of a label
+        used_indices = {}
+
+    print("Beginning to collect classes!")
+    # Get label counts (below threshold)
+    df_counts = get_df_counts()
+    df_counts.sort_values(by="counts", inplace=True)
+    df_counts = df_counts[df_counts.counts < thresh].reset_index(drop=True)
+
+    # Select unique classes
+    n = 0
+    for i in df_counts.iloc[: num_classes].index:
+        label = df_counts.loc[i, "label"]
+        col = df_counts.loc[i, "category"]
+
+        # Track code runtime
+        n += 1
+        start = time.perf_counter()
+
+        # Save class
+        save_unused_class(df_metadata, col, label, used_indices,
+                          thresh=thresh)
+
+        # Analyze code runtime
+        simul_time = time.perf_counter() - start
+        print(f"Saving {label} took {simul_time} seconds.")
+        print(f"Expected Time to Finish: {simul_time * (len(df_counts) - n) / 60} minutes")
+
+        # Update json file
+        with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+            json.dump(used_indices, f)
+
+
+def save_unused_class(df, col: str, label: str, used_indices: dict, thresh=287) -> None:
+    """Save rows with <label> in <col> in a dataframe corresponding to label.
+
+    If the label has <= 1000 examples, save filtered dataframe as is, and return
+        dataframe where <col> != <label>.
+
+    If the label has >1000 examples, do the following:
+        - GroupBy other columns, then sample 1000 rows
+
+    Afterwards,update original <df> with selected rows as 'used' = 1
+
+
+    :param df: dd.DataFrame containing image metadata
+    :param col: category name from dd.DataFrame that contains the unique label
+    :param label: value in <col> to be used as a class
+    :param used_indices: dictionary of unique image indices already used.
+    :param num_datasets: optional number of datasets for this label
+    """
+    # Filter for unused rows with label
+    remove_used = ~df["idx"].isin(used_indices)
+    contains_label = df[col].str.contains(label)
+    df_filtered = df[(contains_label) & (remove_used)]
+    df_filtered.to_csv(f"{annotations_dir}/unused_classes/{label}.csv", index=False)
+    # Add indices used to dictionary
+    used_indices.update(dict.fromkeys(df_filtered["idx"], label))
+
+
+# REMOVING LABELS
 def remove_classes_with_dir(dir_name: str) -> None:
     """Remove classes with <dir_name>.
         - Remove csv file
@@ -297,28 +387,128 @@ def remove_classes_with_dir(dir_name: str) -> None:
         json.dump(used_indices, f)
 
 
-def remove_class(label: str) -> None:
-    """Remove <label>.csv and update used_indices.json
+def remove_class_from_used_images(label: str) -> None:
+    """Remove files associated with <label> from update used_indices.json.
     """
-
     # Get Image Index to Label mapping
-    with open(f"{annotations_dir}classes/used_images.json") as f:
+    with open(f"{annotations_dir}classes/used_images.json", "r") as f:
         used_indices = json.load(f)
 
     df_idx_label = pd.Series(used_indices).reset_index().rename(columns={"index": "idx", 0: "label"})
+
     # Get dir_name
     df_idx_label["dir_name"] = df_idx_label.idx.map(lambda x: x.split("-")[0])
     [used_indices.pop(i, None) for i in df_idx_label[df_idx_label.label == label].idx.tolist()]
-
-    try:
-        os.remove(f"{annotations_dir}/classes/{label}.csv")
-    except:
-        pass
+    # Remove <label>.csv
+    # try:
+    #     os.remove(f"{annotations_dir}/classes/{label}.csv")
+    # except:
+    #     pass
 
     with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
         json.dump(used_indices, f)
 
 
+# RECREATING RECORD OF USED INDICES
+def recreate_used_indices_with_cytoimagenet():
+    """Recreate used_images.json using current metadata in
+    cytoimagenet directory.
+    """
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    used_indices = dict(zip(df_metadata.idx, df_metadata.label))
+
+    with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+        json.dump(used_indices, f)
+
+
+# SUPPLEMENTING LABEL
+def supp_existing_labels_with_unused(labels):
+    """
+    Assuming 900+ labels
+    """
+    for data_cut in range(20, 901, 20):
+        # Counter to time code execution
+        start_time = time.perf_counter()
+
+        if os.path.exists(f"{annotations_dir}classes/used_images.json"):
+            with open(f"{annotations_dir}classes/used_images.json") as f:
+                used_indices = json.load(f)
+                print("Length Used Indices: ", len(used_indices))
+        # Perform supplement in parallel. May lead to race conditions. Recheck later for duplicates
+        pool = multiprocessing.Pool(20)
+        updated_indices = pool.map(supplement_existing_label, labels[:data_cut])
+        # If anything added
+        if any([len(updated_index) > 0 for updated_index in updated_indices]):
+            for updated_index in updated_indices:
+                if len(updated_index) > 0:
+                    used_indices.update(updated_index)
+            # Save updates to used_images.json
+            with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+                json.dump(used_indices, f)
+
+        print(f"First {data_cut} labels done!")
+        # Get time and predict remaining time
+        end_time = time.perf_counter()
+        print(f"Expected Time Remaining: {(900 - data_cut) * (end_time-start_time) / (20*60)} minutes.")
+
+    # Last batch
+    # Perform supplement in parallel.
+    pool = multiprocessing.Pool(5)
+    updated_indices = pool.map(supplement_existing_label, labels[900:])
+    # If anything added
+    if any([len(updated_index) > 0 for updated_index in updated_indices]):
+        for updated_index in updated_indices:
+            if len(updated_index) > 0:
+                used_indices.update(updated_index)
+        # Save updates to used_images.json
+        with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+            json.dump(used_indices, f)
+
+
+def supplement_existing_label(label):
+    """
+    WARNING: Multiprocessing may lead to race conditions.
+    """
+    # Get metadata dataframe
+    df = get_df_metadata()
+    # Load in used_indices if available
+    if os.path.exists(f"{annotations_dir}classes/used_images.json"):
+        with open(f"{annotations_dir}classes/used_images.json") as f:
+            used_indices = json.load(f)
+    else:
+        # Create var to indicate if image (index) is already part of a label
+        used_indices = {}
+    df_class_metadata = pd.read_csv(f"{annotations_dir}/classes/{label}.csv")
+    # Number of images lacking
+    deficit = 1000 - len(df_class_metadata)
+    # Early Exit if >= 1000
+    if deficit == 0:
+        return {}
+    # Get category of label
+    df_counts = get_df_counts()
+    col = df_counts.loc[(df_counts.label == label), "category"].iloc[0]
+    # Filter metadata dataframe for unused images
+    remove_used = ~df["idx"].isin(used_indices)
+    contains_label = df[col].str.contains(label)
+    df_filtered = df[(contains_label) & (remove_used)]
+    # If potential images to add > 0, randomly sample to fill the deficit.
+    if len(df_filtered) > 0:
+        max_sample = min(len(df_filtered), deficit)
+        df_additions = df_filtered.sample(n=max_sample)
+
+        # Concatenate and save new label dataframe
+        df_class_metadata = pd.concat([df_class_metadata, df_additions],
+                                      ignore_index=True)
+        df_class_metadata.to_csv(f"{annotations_dir}/classes/{label}.csv",
+                                 index=False)
+        print(f"Successful Addition of {max_sample} to {label}!")
+        # Update used_images.json
+        used_indices.update(dict(zip(df_class_metadata.idx, [label] * len(df_class_metadata))))
+        return used_indices
+    return {}
+
+
+# PLOTTING
 def plot_class_count():
     df_counts = get_df_counts()
     df_counts.sort_values(by="counts", ascending=False, inplace=True)
@@ -373,16 +563,14 @@ def plot_threshold():
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # save_counts()
-    for file in glob.glob(f"{annotations_dir}classes/*.csv"):
-        df = pd.read_csv(file)
-        if len(df) <= 0:
-            os.remove(file)
-            print(f"Removed {file}")
-        # label = file.split("classes/")[-1].replace(".csv", "")
-        # remove_class(label)
-        # print(f"Removed {label}")
+    # First recreate used_images.json
+    # recreate_used_indices_with_cytoimagenet()
 
-    select_classes_uniquely()
+    # Supplement existing labels with unused images
+    all_labels = [i.split("classes/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "classes/*.csv")]
+    # supp_existing_labels_with_unused(all_labels)
+    # select_classes_uniquely()
+    select_unused_classes_uniquely(num_classes=15)
 
     print(f"Success!")
 else:

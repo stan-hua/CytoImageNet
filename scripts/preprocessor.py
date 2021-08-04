@@ -54,7 +54,6 @@ def normalize(img: np.array):
         - Force new min intensity (0) to be the 0.1th percentile intensity
         - Force new max intensity to be the 99.9th percentile intensity
         - Divide by new max intensity
-        - Rescale to [0, 255]
     """
     # If RGB, convert to grayscale
     if len(img.shape) == 3 and img.shape[-1] == 3:

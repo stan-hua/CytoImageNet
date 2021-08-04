@@ -1,5 +1,6 @@
 from prepare_dataset import check_exists
 from feature_extraction import intra_cos_sims, inter_cos_sims, get_summary_similarities
+from preprocessor import normalize
 from typing import Union
 
 import numpy as np
@@ -8,6 +9,7 @@ from scipy.stats import iqr
 from PIL import Image
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pylab
 
 import random
 import os
@@ -61,10 +63,8 @@ def load_images_from_label(label: str):
     """Return list of arrays (of images) for <label>.
     """
     df = pd.read_csv(f"{annotations_dir}classes/{label}.csv")
-    df.apply(check_exists, axis=1)
-
     imgs = []
-    for i in df.index:
+    for i in df.sample(n=25).index:
         try:
             im = Image.open(df.loc[i, "path"] + "/" + df.loc[i, "filename"])
             imgs.append(np.array(im.resize((224, 224))))
@@ -73,15 +73,11 @@ def load_images_from_label(label: str):
     return imgs
 
 
-def gridplot_images(imgs: list, label:str):
-    # Randomly sample 100
-    try:
-        img_samples = random.sample(imgs, 25)
-    except:
-        return False
-
-    # settings
-    h, w = 5, 5        # for raster image
+def gridplot_images(imgs: list, label:str, save=False):
+    imgs_used = imgs.copy()
+    # Randomly sample 25
+    if len(imgs) > 25:
+        imgs_used = random.sample(imgs_used, 25)
     nrows, ncols = 5, 5  # array of sub-plots
     figsize = [6, 8]     # figure size, inches
 
@@ -91,11 +87,24 @@ def gridplot_images(imgs: list, label:str):
     # plot simple raster image on each sub-plot
     n = 0
     for i, axi in enumerate(ax.flat):
-        axi.imshow(img_samples[n], cmap="gray")
+        axi.imshow(normalize(imgs_used[n]), cmap="gray")
         axi.set_axis_off()
         n += 1
     fig.suptitle(label)
-    plt.savefig(f"{plot_dir}class_grid_show/{label}_grid.png")
+
+    if save:
+        plt.savefig(f"{plot_dir}class_grid_show/{label}_grid.png")
+
+
+def gridplot_labels(labels):
+    """Create and save gridplots for each label in <labels>.
+    """
+    for label in labels:
+        imgs = load_images_from_label(label)
+        if gridplot_images(imgs, label, True) is None:
+            print("Success! for " + label)
+        else:
+            print("No images for " + label)
 
 
 def cluster_by_density(embeds):
@@ -130,7 +139,7 @@ def is_outlier(embeds: pd.DataFrame):
 
 
 def create_umap(labels: Union[str, list],
-                directory: str = "imagenet-activations/"):
+                directory: str = "imagenet-activations/", kind: str = ""):
     """Return tuple of UMAP 2D embeddings and labels for each row.
 
     ==Parameters==:
@@ -139,28 +148,48 @@ def create_umap(labels: Union[str, list],
             - either "imagenet-activations/" or "random_model-activations/"
         name: save figure as <name>.png
     """
-    all_activations = []
-    if isinstance(labels, str):
-        activations = pd.read_csv(f"{model_dir}{directory}/{labels}_activations.csv")
-        # Reference for row to label
-        label_handle = [labels] * len(activations)
-    else:
-        # Accumulate activations & label handle
-        activations = []
-        label_handle = []
+    # Accumulate activations & label handle
+    activations = []
+    label_handle = []
+    file_paths = []
 
-        for label in labels:
-            temp = pd.read_csv(f"{model_dir}{directory}/{label}_activations.csv")
-            activations.append(temp)
-            label_handle.extend([label] * len(temp))
+    for label in labels:
+        # Get all metadata for label
+        if kind == "upsampled":
+            class_meta_filename = f"{annotations_dir}classes/upsampled/{label}.csv"
+        elif kind == "base":
+            class_meta_filename = f"{annotations_dir}classes/{label}.csv"
+        df_class = pd.read_csv(class_meta_filename).reset_index(drop=True)
 
-        activations = pd.concat(activations)
+        # Activations
+        temp = pd.read_csv(f"{model_dir}{directory}/{kind}/{label}_activations.csv")
+        num_null = temp.isna().any(axis=1).sum()
+        if num_null > 0 and len(temp) == len(df_class):
+            print(f"{label} contains {num_null} null values!")
+            # Filter out NAs
+            df_class = df_class.loc[~temp.isna().sum(axis=1).map(lambda x: x > 0)]
+            df_class.to_csv(class_meta_filename, index=False)
+            print(f"{label} updated!")
+        # Accumulate non-null activations
+        temp = temp.dropna().reset_index(drop=True)
+        activations.append(temp)
+
+        # Confirm activations and metadata match
+        if len(temp) != len(df_class):
+            print(kind, label, " has uneven activation - metadata")
+            print("Length Activations/Label Metadata: ", len(temp), len(df_class))
+
+        # Accumulate labels & absolute file paths
+        label_handle.extend([label] * len(temp))
+        file_paths.extend(df_class.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist())
+
+    activations = pd.concat(activations, ignore_index=True)
 
     # Find 2D U-Map Embeddings
     reducer = umap.UMAP(random_state=42)
     embedding = reducer.fit_transform(activations)
 
-    return embedding, np.array(label_handle)
+    return embedding, np.array(label_handle), file_paths
 
 
 def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False):
@@ -170,13 +199,20 @@ def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False
         name: save figure as <name>.png
     """
     plt.figure()
-    ax = sns.scatterplot(x=embeds[:, 0], y=embeds[:, 1],
-                         hue=labels,
-                         legend="full",
-                         alpha=1,
-                         palette="tab20",
-                         s=2,
-                         linewidth=0)
+    try:
+        ax = sns.scatterplot(x=embeds[:, 0], y=embeds[:, 1],
+                             hue=labels,
+                             legend="full",
+                             alpha=1,
+                             palette="tab20",
+                             s=2,
+                             linewidth=0)
+    except:
+        print(name)
+        print("Embed Array Shape: ", embeds.shape)
+        print("Num Labels: ", len(labels))
+        raise Exception
+
     plt.legend(bbox_to_anchor=(1, 1), loc="upper left")
     plt.xlabel("")
     plt.ylabel("")
@@ -193,53 +229,20 @@ def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False
         plt.savefig(f"{plot_dir}umap/{name}.png", bbox_inches='tight', dpi=400)
 
 
-def from_label_to_paths(label: str, kind: str):
-    """Return all image paths for <label> under <kind> preprocessing.
-
-    ==Preconditions==:
-        - kind is either 'base' (no modification) or 'upsampled'
+def plot_umap_by(by: str, kind: str = "base", save: bool = False):
     """
-    if kind == "base":
-        df = pd.read_csv(f"{annotations_dir}classes/{label}.csv")
-    else:
-        df = pd.read_csv(f"{annotations_dir}classes/{kind}/{label}.csv")
-    return df.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist()
+    ==Parameters==:
+        - by: one of 'dataset', 'resolution', 'cluster'
+        - if kind == 'upsampled', then by can also == 'resolution'
+    """
+    # Error-Handling
+    assert by in ["dataset", "resolution"]
+    if by == "resolution" and kind != "upsampled":
+        raise Exception("Only upsampled classes can be plotted by resolution!")
 
 
-if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    next_chosen = ['human', 'nucleus', 'cell membrane',
-                   'white blood cell', 'kinase',
-                   'wildtype', 'difficult',
-                   'nematode', 'yeast', 'bacteria',
-                   ]
-
-    # for label in next_chosen:
-    #     imgs = load_images_from_label(label)
-    #     if gridplot_images(imgs, label) is None:
-    #         print("Success! for " + label)
-    #     else:
-    #         print("No images for " + label)
-    # df_base = get_summary_similarities(embeds, labels)
-    # df_base.to_csv(model_dir + "similarity/base.csv", index=False)
-
-    for kind in ["base", "upsampled"]:
-        # Get Embeddings
-        embeds, labels = create_umap(next_chosen, directory=f"imagenet-activations/{kind}/")
-        # Plot U-Map labeled by category labels
-        plot_umap(embeds, labels, name=kind, save=True)
-
-        # Convert to dataframe
-        df_embed = pd.DataFrame(embeds)
-        df_embed["labels"] = labels
-        df_embed.to_csv(model_dir + f'imagenet-activations/{kind}_embeddings.csv', index=False)
-
-        # Get image paths to corresponding activations
-        full_path = []
-        for label in next_chosen:
-            full_path.extend(from_label_to_paths(label, kind))
-        len(full_path)
-        df_embed['full_path'] = full_path
-
+    df_embed = pd.read_csv(model_dir + f'imagenet-activations/{kind}_embeddings.csv')
+    if by == "cluster":
         # Density-based Clustering
         cluster_labels = cluster_by_density(df_embed)
 
@@ -248,40 +251,34 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
             embed_cluster = df_embed.loc[cluster_labels == cluster]
             if len(embed_cluster) > 25:
                 embed_cluster = embed_cluster.sample(n=25)
-            imgs = [Image.open(path) for path in embed_cluster.full_path.tolist()]
-            print(f"{kind} cluster {cluster} ", np.array(imgs).flatten().mean())
-            gridplot_images(imgs, f"{kind} cluster_{cluster}")
+            imgs = [np.array(Image.open(path)) for path in embed_cluster.full_path.tolist()]
+            gridplot_images(imgs, f"{kind} cluster_{cluster}", save=True)
 
         # Plot U-Map labeled by cluster assignment
-        plot_umap(df_embed.iloc[:, :2].to_numpy(), cluster_labels, name=f"{kind}_clustered")
+        plot_umap(np.array(df_embed.iloc[:, :2]), cluster_labels, name=f"{kind}_clustered", save=save)
 
-elif "D:\\" in os.getcwd():
-    # df_base = pd.read_csv(model_dir + "similarity/base.csv")
-    # df_up = pd.read_csv(model_dir + "similarity/upsampled.csv")
-    # df_full = pd.merge(df_base, df_up, on="label")
-    # df_full['change_intra_cos'] = df_full["intra_cos_y"] - df_full["intra_cos_x"]
-    # df_full['change_inter_cos'] = df_full["inter_cos_y"] - df_full["inter_cos_x"]
-    # df_full['change_vis_intra'] = df_full.apply(lambda x: str(x.intra_cos_x) + " -> " + str(x.intra_cos_y), axis=1)
-    # df_full['change_vis_inter'] = df_full.apply(lambda x: str(x.inter_cos_x) + " -> " + str(x.inter_cos_y), axis=1)
-
-    if True:
-        df_embed = pd.read_csv(model_dir + 'imagenet-activations/base_embeddings.csv')
-        datasets_from = []
-        for label in df_embed.labels.unique():
-            df = pd.read_csv(f"{annotations_dir}classes//{label}.csv")
-            datasets_from.extend(df.name.tolist())
+    if kind == "upsampled":
+        label_dir = f"{annotations_dir}classes/upsampled/"
     else:
-        df_embed = pd.read_csv(model_dir + 'imagenet-activations/upsampled_embeddings.csv')
-        datasets_from = []
-        for label in df_embed.labels.unique():
-            df = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
-            datasets_from.extend(df.name.tolist())
+        label_dir = f"{annotations_dir}classes/"
 
-    # plot_umap(df_embed.iloc[:, :2].to_numpy(), datasets_from, name="", save=False)
+    # Get labels from metadata to group 'by'
+    info = []
+    for label in df_embed.labels.unique():
+        df = pd.read_csv(f"{label_dir}/{label}.csv")
+        if by == "dataset":
+            info.extend(df.name.tolist())
+        else:
+            info.extend(df.scaling.tolist())
 
+        # Check if embeddings and metadata don't match
+        if len(df_embed[df_embed.labels == label]) != len(df):
+            print(label)
+
+    # Create Plot
     plt.figure()
     ax = sns.scatterplot(x=df_embed.iloc[:, :2].to_numpy()[:, 0], y=df_embed.iloc[:, :2].to_numpy()[:, 1],
-                         hue=datasets_from,
+                         hue=info,
                          legend='full',
                          alpha=1,
                          palette="gist_rainbow",
@@ -291,8 +288,97 @@ elif "D:\\" in os.getcwd():
                     bottom=False,
                     labelleft=False,
                     labelbottom=False)
-    legend_handles = ax.get_legend_handles_labels()
-    ax.get_legend().remove()
 
-    plt.figure(figsize=(4.15, 7.3))
-    pylab.figlegend(*ax.get_legend_handles_labels(), loc = 'upper left')
+    if by == "dataset":
+        legend_handles = ax.get_legend_handles_labels()
+        ax.get_legend().remove()
+        # Place legend on separate plot
+        fig_2 = plt.figure(figsize=(4.15, 7.3))
+        pylab.figlegend(*ax.get_legend_handles_labels(), loc='upper left')
+
+        if save:
+            plt.savefig(f"{plot_dir}umap/{kind} (by {by}), legend.png",
+                        bbox_inches='tight', dpi=400)
+
+    if save:
+        if not os.path.isdir(f"{plot_dir}umap/"):
+            os.mkdir(f"{plot_dir}umap/")
+        fig = ax.get_figure()
+        fig.savefig(f"{plot_dir}umap/{kind} (by {by}).png",
+                    bbox_inches='tight', dpi=400)
+
+
+def from_label_to_paths(label: str, kind: str):
+    """Return all image paths for <label> under <kind> preprocessing.
+
+    ==Preconditions==:
+        - kind is either 'base' (no modification) or 'upsampled'
+    """
+    if kind == "upsampled":
+        df = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
+    else:
+        df = pd.read_csv(f"{annotations_dir}classes/{label}.csv")
+    return df.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist()
+
+
+if __name__ == "__main__" and "D:\\" not in os.getcwd():
+    # Parameters
+    weights = "cytoimagenet"      # 'imagenet' or None
+
+    # Directory to load activations
+    if weights is None:
+        activation_loc = "random_model-activations/"
+    elif weights == "cytoimagenet":
+        activation_loc = "cytoimagenet-activations/"
+    else:
+        activation_loc = "imagenet-activations/"
+
+    # Labels to Visualize
+    chosen = ['human', 'nucleus', 'cell membrane',
+              'white blood cell', 'kinase',
+              'wildtype', 'difficult',
+              'nematode', 'yeast', 'bacteria',
+              'vamp5 targeted', 'uv inactivated sars-cov-2',
+              'trophozoite', 'tamoxifen', 'tankyrase inhibitor',
+              'dmso', 'rho associated kinase inhibitor', 'rna',
+              'rna synthesis inhibitor', 'cell body'
+              ]
+
+    random_classes = ['fgf-20', 'hpsi0513i-golb_2', 'distal convoluted tubule',
+                      'fcgammariia', 'pentoxifylline', 'oxybuprocaine', 'il-27',
+                      'phospholipase inhibitor', 'estropipate', 'tl-1a',
+                      'methacholine', 'cdk inhibitor', 'cobicistat', 'il-28a',
+                      'dna synthesis inhibitor', 'lacz targeted',
+                      'ccnd1 targeted', 's7902', 'clofarabine', 'ficz']
+
+    # SIMILARITY
+    # df_base = get_summary_similarities(embeds, labels)
+    # df_base.to_csv(model_dir + "similarity/base.csv", index=False)
+
+    for kind in ["base", "upsampled"]:
+        # Get Embeddings
+        embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
+                                     kind=kind)
+
+        # Plot U-Map labeled by category labels
+        plot_umap(np.array(embeds), labels, name=f"{kind} (random 20, {weights})", save=True)
+
+        # Convert to dataframe. Save labels
+        df_embed = pd.DataFrame(embeds)
+        df_embed["labels"] = labels
+        df_embed['full_path'] = full_paths
+
+        df_embed.to_csv(model_dir + f'{activation_loc}/{kind}_embeddings (random 20, {weights}).csv', index=False)
+    # plot_umap_by('resolution', "upsampled", True)
+
+elif "D:\\" in os.getcwd():
+    # df_base = pd.read_csv(model_dir + "similarity/base.csv")
+    # df_up = pd.read_csv(model_dir + "similarity/upsampled.csv")
+    # df_full = pd.merge(df_base, df_up, on="label")
+    # df_full['change_intra_cos'] = df_full["intra_cos_y"] - df_full["intra_cos_x"]
+    # df_full['change_inter_cos'] = df_full["inter_cos_y"] - df_full["inter_cos_x"]
+    # df_full['change_vis_intra'] = df_full.apply(lambda x: str(x.intra_cos_x) + " -> " + str(x.intra_cos_y), axis=1)
+    # df_full['change_vis_inter'] = df_full.apply(lambda x: str(x.inter_cos_x) + " -> " + str(x.inter_cos_y), axis=1)
+    pass
+    # plot_umap_by('scaling', "upsampled", True)
+
