@@ -67,7 +67,9 @@ if __name__ == "__main__":
     except:
         all_mapping = {}
 
-    for file in glob.glob(annotations_dir + "classes/*.csv"):
+    all_used_files = glob.glob(annotations_dir + "classes/*.csv")
+    all_used_files.extend(glob.glob(annotations_dir + "unused_classes/*.csv"))
+    for file in all_used_files:
         df = pd.read_csv(file)
         df = df[~df.idx.isin(all_mapping)]
         if len(df) > 0:

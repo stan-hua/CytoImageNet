@@ -3,7 +3,7 @@ import dask
 import pandas as pd
 import numpy as np
 
-import multiprocessing
+from multiprocessing import Pool
 import json
 import os
 import glob
@@ -301,7 +301,7 @@ def select_unused_classes_uniquely(num_classes: int) -> None:
     print("Beginning to collect classes!")
     # Get label counts (below threshold)
     df_counts = get_df_counts()
-    df_counts.sort_values(by="counts", inplace=True)
+    df_counts.sort_values(by="counts", inplace=True, ascending=False)
     df_counts = df_counts[df_counts.counts < thresh].reset_index(drop=True)
 
     # Select unique classes
@@ -310,19 +310,9 @@ def select_unused_classes_uniquely(num_classes: int) -> None:
         label = df_counts.loc[i, "label"]
         col = df_counts.loc[i, "category"]
 
-        # Track code runtime
-        n += 1
-        start = time.perf_counter()
-
         # Save class
         save_unused_class(df_metadata, col, label, used_indices,
                           thresh=thresh)
-
-        # Analyze code runtime
-        simul_time = time.perf_counter() - start
-        print(f"Saving {label} took {simul_time} seconds.")
-        print(f"Expected Time to Finish: {simul_time * (len(df_counts) - n) / 60} minutes")
-
         # Update json file
         with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
             json.dump(used_indices, f)
@@ -348,8 +338,15 @@ def save_unused_class(df, col: str, label: str, used_indices: dict, thresh=287) 
     """
     # Filter for unused rows with label
     remove_used = ~df["idx"].isin(used_indices)
+    df[col] = df[col].fillna("")
     contains_label = df[col].str.contains(label)
-    df_filtered = df[(contains_label) & (remove_used)]
+    print(contains_label)
+    df_filtered = df.loc[(contains_label) & (remove_used)]
+
+    for bad_char in "~!@#$%^&*()`;<>?,[]{}\'\"":
+        if bad_char in label:
+            label = label.replace(bad_char, "")
+    print(label + f" is of size {len(df_filtered)}")
     df_filtered.to_csv(f"{annotations_dir}/unused_classes/{label}.csv", index=False)
     # Add indices used to dictionary
     used_indices.update(dict.fromkeys(df_filtered["idx"], label))
@@ -394,7 +391,7 @@ def remove_class_from_used_images(label: str) -> None:
     with open(f"{annotations_dir}classes/used_images.json", "r") as f:
         used_indices = json.load(f)
 
-    df_idx_label = pd.Series(used_indices).reset_index().rename(columns={"index": "idx", 0: "label"})
+    df_idx_label = pd.Series(used_indices).reset_index().rename(columns={"index":"idx", 0:"label"})
 
     # Get dir_name
     df_idx_label["dir_name"] = df_idx_label.idx.map(lambda x: x.split("-")[0])
@@ -407,6 +404,20 @@ def remove_class_from_used_images(label: str) -> None:
 
     with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
         json.dump(used_indices, f)
+
+
+# REMOVING REDUNDANT IMAGES
+def cytoimagenet_remove_duplicates():
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    # Save unique rows
+    df_unique = df_metadata[~df_metadata.duplicated(subset=["filename"])]
+    df_unique.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
+    # Remove duplicate images from directory
+    duplicates = df_metadata[df_metadata.duplicated(subset=["filename"])]
+    duplicates.apply(lambda x: os.remove(x.path + "/" + x.filename), axis=1)
+    if len(duplicates) > 0:
+        print(len(duplicates), " removed!")
 
 
 # RECREATING RECORD OF USED INDICES
@@ -435,8 +446,10 @@ def supp_existing_labels_with_unused(labels):
                 used_indices = json.load(f)
                 print("Length Used Indices: ", len(used_indices))
         # Perform supplement in parallel. May lead to race conditions. Recheck later for duplicates
-        pool = multiprocessing.Pool(20)
+        pool = Pool(20)
         updated_indices = pool.map(supplement_existing_label, labels[:data_cut])
+        pool.close()
+        pool.join()
         # If anything added
         if any([len(updated_index) > 0 for updated_index in updated_indices]):
             for updated_index in updated_indices:
@@ -453,8 +466,10 @@ def supp_existing_labels_with_unused(labels):
 
     # Last batch
     # Perform supplement in parallel.
-    pool = multiprocessing.Pool(5)
+    pool = Pool(5)
     updated_indices = pool.map(supplement_existing_label, labels[900:])
+    pool.close()
+    pool.join()
     # If anything added
     if any([len(updated_index) > 0 for updated_index in updated_indices]):
         for updated_index in updated_indices:
@@ -491,6 +506,10 @@ def supplement_existing_label(label):
     remove_used = ~df["idx"].isin(used_indices)
     contains_label = df[col].str.contains(label)
     df_filtered = df[(contains_label) & (remove_used)]
+    # Remove NA idx
+    if df_filtered.idx.isna().sum() > 0:
+        print(f"Null idx values found! for {label}")
+        df_filtered = df_filtered.dropna(subset=['idx'])
     # If potential images to add > 0, randomly sample to fill the deficit.
     if len(df_filtered) > 0:
         max_sample = min(len(df_filtered), deficit)
@@ -503,8 +522,9 @@ def supplement_existing_label(label):
                                  index=False)
         print(f"Successful Addition of {max_sample} to {label}!")
         # Update used_images.json
-        used_indices.update(dict(zip(df_class_metadata.idx, [label] * len(df_class_metadata))))
-        return used_indices
+        # used_indices.update(dict(zip(df_class_metadata.idx, [label] * len(df_class_metadata))))
+        # Return only new values
+        return dict(zip(df_additions.idx, [label] * len(df_additions)))
     return {}
 
 
@@ -561,6 +581,33 @@ def plot_threshold():
     print(df_thresh[df_diff == df_diff.min()])
 
 
+def main(label):
+    df_label = pd.read_csv(annotations_dir + f"classes/{label}.csv")
+    # Check if duplicates or NA
+    # if df_label.idx.isna().sum() == 0 and df_label.idx.duplicated().sum() == 0:
+    #     return None, None
+    # Get indices to remove
+    idx_to_remove = df_label[df_label.idx.isna()].idx.tolist()
+    idx_to_remove.extend(df_label[df_label.duplicated(subset=['idx'])].idx.tolist())
+    print(f"Removed {len(idx_to_remove)} null values!")
+
+    # Drop NA
+    df_label = df_label.dropna(subset=['idx'])
+    # Drop Duplicates
+    df_label = df_label.drop_duplicates(subset=['idx'])
+
+    df_label.to_csv(annotations_dir + f"classes/{label}.csv", index=False)
+
+    # Only try supplementing existing label if > 500 images
+    if len(df_label) > 500:
+        print(f"Attempting to supplement {label}...")
+        idx_to_add = supplement_existing_label(label)
+    else:
+        idx_to_add = None
+
+    return idx_to_remove, idx_to_add
+
+
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # save_counts()
     # First recreate used_images.json
@@ -568,11 +615,43 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
 
     # Supplement existing labels with unused images
     all_labels = [i.split("classes/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "classes/*.csv")]
-    # supp_existing_labels_with_unused(all_labels)
-    # select_classes_uniquely()
-    select_unused_classes_uniquely(num_classes=15)
 
-    print(f"Success!")
+    # with open(f"{annotations_dir}classes/used_images.json") as f:
+    #     used_indices = json.load(f)
+    #     print("Length Used Indices: ", len(used_indices))
+    #
+    # results = Pool(10).map(main, ['mis', 'nmumg', 'u2os', 'strong inhibition of secretion', 'hela', 'chr2 targeted', 'human'])
+    # print(results)
+    # # Check results
+    # for result in results:
+    #     # If any NA/duplicates to remove
+    #     idx_to_remove, idx_to_add = result
+    #     if idx_to_remove is not None:
+    #         for idx in idx_to_remove:
+    #             used_indices.pop(idx)
+    #
+    #     if idx_to_add is not None:
+    #         for idx in idx_to_add:
+    #             used_indices.update(idx_to_add)
+    #
+    # # Save updates to used_images.json
+    # with open(f"{annotations_dir}classes/used_images.json", 'w') as f:
+    #     json.dump(used_indices, f)
+
+    recreate_used_indices_with_cytoimagenet()
+    select_unused_classes_uniquely(10)
+
+    # select_classes_uniquely()
+    # select_unused_classes_uniquely(num_classes=25)
+    # Remove duplicates
+    # cytoimagenet_remove_duplicates()
+    # Recreate used indices
+    # recreate_used_indices_with_cytoimagenet()
+    # Create classes from unused images
+    # for label in [i.split("unused_classes/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "unused_classes/*.csv")]:
+    #     remove_class_from_used_images(label)
+    #     select_unused_classes_uniquely(num_classes=20)
+    # print(f"Success!")
 else:
     pass
     # plot_class_count()

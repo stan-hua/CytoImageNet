@@ -96,6 +96,7 @@ def merger(paths: list, filenames: list, new_filename: str, dir_name: str = dir_
 
         if len(img_stack) == 0:
             print("Error! No images loaded for: " + paths[i] + "/" + filenames[i])
+            return False
 
     # Stack channel images. Then average along normalized channels.
     img_stack = np.stack(img_stack, axis=-1)
@@ -104,6 +105,7 @@ def merger(paths: list, filenames: list, new_filename: str, dir_name: str = dir_
     img_stack = img_stack * 255
 
     save_img(img_stack, new_filename, dir_name=dir_name)
+    return True
 
 
 def preprocess_bbbc045():
@@ -233,7 +235,7 @@ def create_image(x):
 
     # If image not applicable to be merged, early exit
     if old_paths is None:
-        return
+        return True
 
     if len(old_paths) != len(old_names):
         print(f"Length of Paths != Names for {x.dir_name}")
@@ -248,14 +250,15 @@ def create_image(x):
     old_names = [old_names[k] for k in range(len(old_names)) if k not in to_remove]
 
     if len(old_paths) == 0:
-        print(f"Error! No images listed for {x.dir_name} at {old_paths[0]}/{old_names[0]}")
-        return
+        print(f"Error! No images listed for {x.dir_name}")
+        return False
 
-    merger(old_paths, old_names, name, x.dir_name)
+    return merger(old_paths, old_names, name, x.dir_name)
 
 
 if __name__ == "__main__":
-    preprocess_bbbc045()
+    # preprocess_bbbc045()
+    pass
 
 
 

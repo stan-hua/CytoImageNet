@@ -160,18 +160,19 @@ def create_umap(labels: Union[str, list],
         elif kind == "base":
             class_meta_filename = f"{annotations_dir}classes/{label}.csv"
         df_class = pd.read_csv(class_meta_filename).reset_index(drop=True)
-
+        # exists_series = df_class.apply(check_exists, axis=1)
+        # df_class = df_class[exists_series]
         # Activations
         temp = pd.read_csv(f"{model_dir}{directory}/{kind}/{label}_activations.csv")
-        num_null = temp.isna().any(axis=1).sum()
-        if num_null > 0 and len(temp) == len(df_class):
-            print(f"{label} contains {num_null} null values!")
-            # Filter out NAs
-            df_class = df_class.loc[~temp.isna().sum(axis=1).map(lambda x: x > 0)]
-            df_class.to_csv(class_meta_filename, index=False)
-            print(f"{label} updated!")
-        # Accumulate non-null activations
-        temp = temp.dropna().reset_index(drop=True)
+        # num_null = temp.isna().any(axis=1).sum()
+        # if num_null > 0 and len(temp) == len(df_class):
+        #     print(f"{label} contains {num_null} null values!")
+        #     # Filter out NAs
+        #     df_class = df_class.loc[~temp.isna().sum(axis=1).map(lambda x: x > 0)]
+        #     df_class.to_csv(class_meta_filename, index=False)
+        #     print(f"{label} updated!")
+        # # Accumulate non-null activations
+        # temp = temp.dropna().reset_index(drop=True)
         activations.append(temp)
 
         # Confirm activations and metadata match
@@ -241,7 +242,7 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
         raise Exception("Only upsampled classes can be plotted by resolution!")
 
 
-    df_embed = pd.read_csv(model_dir + f'imagenet-activations/{kind}_embeddings.csv')
+    df_embed = pd.read_csv(model_dir + f'imagenet-activations/{kind}_embeddings (random 20, imagenet).csv')
     if by == "cluster":
         # Density-based Clustering
         cluster_labels = cluster_by_density(df_embed)
@@ -323,7 +324,7 @@ def from_label_to_paths(label: str, kind: str):
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # Parameters
-    weights = "cytoimagenet"      # 'imagenet' or None
+    weights = "imagenet"      # 'imagenet' or None
 
     # Directory to load activations
     if weights is None:
@@ -371,6 +372,7 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
         df_embed.to_csv(model_dir + f'{activation_loc}/{kind}_embeddings (random 20, {weights}).csv', index=False)
     # plot_umap_by('resolution', "upsampled", True)
 
+
 elif "D:\\" in os.getcwd():
     # df_base = pd.read_csv(model_dir + "similarity/base.csv")
     # df_up = pd.read_csv(model_dir + "similarity/upsampled.csv")
@@ -380,5 +382,6 @@ elif "D:\\" in os.getcwd():
     # df_full['change_vis_intra'] = df_full.apply(lambda x: str(x.intra_cos_x) + " -> " + str(x.intra_cos_y), axis=1)
     # df_full['change_vis_inter'] = df_full.apply(lambda x: str(x.inter_cos_x) + " -> " + str(x.inter_cos_y), axis=1)
     pass
-    # plot_umap_by('scaling', "upsampled", True)
+    # plot_umap_by('resolution', "upsampled", True)
+    plot_umap_by('dataset', "base", True)
 

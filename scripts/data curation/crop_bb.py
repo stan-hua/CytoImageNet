@@ -44,7 +44,7 @@ def get_crops(x):
     i_filepath = f"{data_dir}/{dir_name}/malaria" + x["path_file"]
     img = np.array(Image.open(i_filepath))
     # Convert to Grayscale             # Average along channels
-    img = img.mean(axis=2)
+    img = img.mean(axis=-1)
     # Crop Number
     img_num = 0
 
@@ -68,8 +68,8 @@ def get_crops(x):
         new_row["cell_type"] = label
         new_row["path"] = crop_folder
         new_row["filename"] = new_name
-        df_metadata = pd.concat([df_metadata, new_row], ignore_index=True)
+        # df_metadata = pd.concat([df_metadata, new_row], ignore_index=True)
 
 
 df_labels.apply(get_crops, axis=1)
-df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv", index=False)
+# df_metadata.to_csv(f"{annotations_dir}/{dir_name}_metadata.csv", index=False)

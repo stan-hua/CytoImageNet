@@ -1,5 +1,5 @@
-from describe_dataset import contains_list, str_to_eval
-from download_data import download
+from describe_dataset import str_to_eval
+from scripts.download_data import download
 import pandas as pd
 import os
 

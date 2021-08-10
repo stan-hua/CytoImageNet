@@ -1,8 +1,3 @@
-from prepare_dataset import check_exists, check_file_extension, rename_extension, supplement_label
-from preprocessor import normalize
-from analyze_metadata import get_df_counts
-from clean_classes import check_sample_size
-
 import pandas as pd
 import numpy as np
 from numpy import dot
@@ -10,8 +5,7 @@ from numpy.linalg import norm
 from itertools import combinations
 import os
 import glob
-
-from PIL import Image
+import cv2
 
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -119,44 +113,35 @@ def test_datagen(label: str, label_dir):
 
     """
     df = pd.read_csv(f"{annotations_dir}classes/{label_dir}/{label}.csv")
-    df.apply(check_exists, axis=1)
-    # df.apply(check_file_extension, axis=1)
-    # df["filename"] = df.filename.map(rename_extension)
     df['full_name'] = df.apply(lambda x: f"{x.path}/{x.filename}", axis=1)
     return df
-
-
-def preprocess_input(x):
-    if x.max() == 255.0 and x.min() == 0.0:
-        return x / 255.
-    elif x.max() == x.min():        # image improperly read by tensorflow
-        return x
-    else:
-        img = normalize(x)
-        img = np.stack([img] * 3, axis=-1)
-        return img
 
 
 def get_activations_for(model, label: str, directory: str = "imagenet-activations/base", label_dir: str = ""):
     """Load <model>. Extract activations for images under label.
     """
     # Create Image Generator for <label>
-    test_gen = ImageDataGenerator(preprocessing_function=preprocess_input).flow_from_dataframe(
-        dataframe=test_datagen(label, label_dir),
-        directory=None,
-        x_col='full_name',
-        batch_size=1,
-        target_size=(224, 224),
-        color_mode='rgb',
-        shuffle=False,
-        class_mode=None,
-        interpolation='bilinear',
-        seed=1,
-        validate_filenames=False
-    )
+    # test_gen = ImageDataGenerator().flow_from_dataframe(
+    #     dataframe=test_datagen(label, label_dir),
+    #     directory=None,
+    #     x_col='full_name',
+    #     batch_size=1,
+    #     target_size=(224, 224),
+    #     color_mode='rgb',
+    #     shuffle=False,
+    #     class_mode=None,
+    #     interpolation='bilinear',
+    #     seed=1,
+    #     validate_filenames=False
+    # )
+    # # Save image embeddings
+    # activations = model.predict(test_gen)
+    df_test = test_datagen(label, label_dir)
+    activations = []
+    for i in range(len(df_test)):
+        img = cv2.imread(df_test.iloc[i].full_name)
+        activations.append(model.predict(np.expand_dims(img, axis=0)).flatten())
 
-    # Save image embeddings
-    activations = model.predict(test_gen)
     if not os.path.exists(f"{model_dir}{directory}"):
         os.mkdir(f"{model_dir}{directory}")
 
@@ -289,7 +274,7 @@ def get_summary_similarities(embeds: pd.DataFrame, labels: np.array):
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # Choose model
     model_choice = "efficient"
-    weights = 'cytoimagenet'              # 'imagenet' or None
+    weights = 'imagenet'              # 'imagenet' or None
     print("weights: ", weights)
     # Directory to save activations
     if weights is None:
@@ -309,14 +294,14 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
         activation_loc = "random_model-activations/"
         prefix = 'random'   # AlexNet
     else:   # EfficientNetB0
+        # TODO: Fix this after training once more on CytoImageNet
         if weights == "cytoimagenet":
             cyto_weights_dir = "/home/stan/cytoimagenet/model/cytoimagenet-weights/random_init/"
-            model = Sequential()
             # Add efficientnet architecture
-            model.add(EfficientNetB0(weights=None,
-                                     include_top=False,
-                                     input_shape=(224, 224, 3),
-                                     pooling="max"))
+            model = EfficientNetB0(weights=None,
+                                   include_top=False,
+                                   input_shape=(224, 224, 3),
+                                   pooling="max")
             # Prediction layer
             model.add(Dense(902, activation="softmax"))
             # Load weights
@@ -327,7 +312,7 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
         else:
             model = EfficientNetB0(weights=weights,
                                    include_top=False,
-                                   input_shape=(224, 224, 3),
+                                   input_shape=(None, None, 3),
                                    pooling="max")
         model.trainable = False
 
