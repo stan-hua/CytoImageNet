@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../Shoot-em-up-Game-Project/.idea/Shoot-em-up-Game-Project.iml" filepath="$PROJECT_DIR$/../Shoot-em-up-Game-Project/.idea/Shoot-em-up-Game-Project.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/cytoimagenet.iml" filepath="$PROJECT_DIR$/.idea/cytoimagenet.iml" />
     </modules>
   </component>

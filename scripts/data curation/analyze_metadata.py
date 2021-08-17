@@ -23,7 +23,7 @@ if "D:\\" not in os.getcwd():
 else:
     annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
-    plot_dir = "D:/projects/cytoimagenet/figures/classes/"
+    plot_dir = "/figures/classes/"
 
 
 def get_df_metadata() -> pd.DataFrame:

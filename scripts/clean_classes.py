@@ -1,6 +1,3 @@
-from analyze_metadata import check_existing_classes
-
-import os
 import json
 import glob
 

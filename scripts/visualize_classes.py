@@ -1,11 +1,8 @@
-from prepare_dataset import check_exists
-from feature_extraction import intra_cos_sims, inter_cos_sims, get_summary_similarities
 from preprocessor import normalize
 from typing import Union
 
 import numpy as np
 import pandas as pd
-from scipy.stats import iqr
 from PIL import Image
 import matplotlib.pyplot as plt
 import seaborn as sns

@@ -1,10 +1,10 @@
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPool2D, Flatten, Dense, Dropout, Input, Activation
+from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras.applications import EfficientNetB0
 from tensorflow.keras.optimizers import Adam, RMSprop
-
-from tensorflow.keras import mixed_precision
+from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 
 import os
 import numpy as np
@@ -116,17 +116,31 @@ def get_dset_generators(split=False, num_classes=902, batch_size=64) -> tuple:
 
 def create_model(num_classes: int, weights=None):
     """Construct tensorflow model."""
-    efficient_model = EfficientNetB0(weights=weights,
-                                     include_top=False,
-                                     input_shape=(224, 224, 3),
-                                     pooling="max")
-    efficient_model.trainable = True
-    # Prediction layers
-    x = Dense(num_classes, activation=None)(efficient_model.output)
-    # Convert to float32 values
-    model_output = Activation('softmax', dtype='float32')(x)
+    if False:
+        efficient_model = EfficientNetB0(weights=weights,
+                                         include_top=False,
+                                         input_shape=(224, 224, 3),
+                                         pooling="max")
+        efficient_model.trainable = True
+        # Prediction layers
+        x = Dense(num_classes, activation=None)(efficient_model.output)
+        # Convert to float32 values
+        model_output = Activation('softmax', dtype='float32')(x)
+        model = tf.keras.Model(efficient_model.input, model_output)
+    else:
+        if weights is None:
+            model = EfficientNetB0(weights=weights,
+                                   classes=num_classes)
+        elif weights == "imagenet":
+            efficient_model = EfficientNetB0(weights=weights,
+                                   include_top=False,
+                                   pooling="avg",
+                                   input_shape=(224, 224, 3))
+            efficient_model.trainable = True
+            x = Dense(num_classes, activation='softmax')(efficient_model.output)
+            model = tf.keras.Model(efficient_model.input, x)
 
-    return tf.keras.Model(efficient_model.input, model_output)
+    return model
 
 
 def plot_loss(history, weight, dset: str = "toy", split=False):
@@ -163,11 +177,11 @@ def plot_loss(history, weight, dset: str = "toy", split=False):
 
 
 def main():
-    num_classes = 901
+    num_classes = 830
 
     # Parameters
     batch_size = 32
-    num_epochs = 10
+    num_epochs = 100
     learn_rate = 0.01
     weights = None                              # None or 'imagenet'
     dset = "full"                               # 'full' or 'toy'
@@ -188,18 +202,24 @@ def main():
     #                     decay=0.9,
     #                     momentum=0.9)
 
+    # Metrics
+    top_n_acc = tf.keras.metrics.TopKCategoricalAccuracy(
+        k=7, name='top_k_categorical_accuracy', dtype=None)
+
     # Compile
     model.compile(optimizer, loss="categorical_crossentropy",
-                  metrics=['categorical_accuracy'])
+                  metrics=['categorical_accuracy', top_n_acc])
 
     # Callbacks. Save model weights every 2 epochs.
     if weights is None:
-        checkpoint_filename = model_dir + "/cytoimagenet-weights/random_init/efficientnetb0_from_random-epoch_{epoch:02d}.h5"
+        checkpoint_filename = model_dir + "/cytoimagenet-weights/random_init/efficientnetb0_from_random-epoch_{epoch:02d}.h5"   # TODO: Add 10 to epoch
     else:
         checkpoint_filename = model_dir + "/cytoimagenet-weights/imagenet_init/efficientnetb0_from_imagenet_{epoch:02d}.h5"
-    callbacks = [tf.keras.callbacks.ModelCheckpoint(
-        checkpoint_filename, monitor='loss', verbose=0,
-        save_best_only=False, save_weights_only=True, save_freq=2*batch_size)]
+    callbacks = [ModelCheckpoint(checkpoint_filename, monitor='loss', verbose=0,
+                                 save_best_only=False, save_weights_only=True,
+                                 save_freq='epoch'),
+                 ReduceLROnPlateau(monitor='loss', factor=0.2, patience=5,
+                                   min_lr=0.001)]
 
     # Fit model
     if split:
@@ -226,25 +246,19 @@ def main():
     # Create plot
     plot_loss(history, weights, dset, split)
 
-    # Save model weights
+    # Save model weights & history
     if not os.path.exists(f"{model_dir}cytoimagenet"):
         os.mkdir(model_dir + "cytoimagenet")
+    hist_df = pd.DataFrame(history.history)
 
     if weights is None:
         model.save_weights(f"{model_dir}cytoimagenet/efficientnetb0_from_random.h5")
+        hist_df.to_csv(f"{model_dir}cytoimagenet/efficientnetb0_from_random(history).csv")
     else:
         model.save_weights(f"{model_dir}cytoimagenet/efficientnetb0_from_imagenet.h5")
+        hist_df.to_csv(f"{model_dir}cytoimagenet/efficientnetb0_from_imagenet(history).csv")
 
 
 if __name__ == "__main__":
     # Labels
-    # classes = ['human', 'nucleus', 'cell membrane',
-    #           'white blood cell', 'kinase',
-    #           'wildtype', 'difficult',
-    #           'nematode', 'yeast', 'bacteria',
-    #           'vamp5 targeted', 'uv inactivated sars-cov-2',
-    #           'trophozoite', 'tamoxifen', 'tankyrase inhibitor',
-    #           'dmso', 'rho associated kinase inhibitor', 'rna',
-    #           'rna synthesis inhibitor', 'cell body'
-    #           ]
     main()

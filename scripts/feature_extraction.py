@@ -320,27 +320,28 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # for file in glob.glob(f"{annotations_dir}classes/*.csv"):
     #     labels.append(file.split("classes/")[-1].replace(".csv", ""))
 
-    chosen = ['human', 'nucleus', 'cell membrane',
-               'white blood cell', 'kinase',
-               'wildtype', 'difficult',
-               'nematode', 'yeast', 'bacteria',
-               'vamp5 targeted', 'uv inactivated sars-cov-2',
+    toy_20 = ['human', 'nucleus', 'cell membrane',
+               'kinase', 'yeast', 'vamp5 targeted', 'uv inactivated sars-cov-2',
                'trophozoite', 'tamoxifen', 'tankyrase inhibitor',
                'dmso', 'rho associated kinase inhibitor', 'rna',
-               'rna synthesis inhibitor', 'cell body'
+               'rna synthesis inhibitor', 'cell body', 'actin', 'microtubules',
+              'mitochondria', 'u2os', 's35651'
                ]
 
-    random_classes = ['fgf-20', 'hpsi0513i-golb_2', 'distal convoluted tubule',
-                      'fcgammariia', 'pentoxifylline', 'oxybuprocaine', 'il-27',
-                      'phospholipase inhibitor', 'estropipate', 'tl-1a',
-                      'methacholine', 'cdk inhibitor', 'cobicistat', 'il-28a',
-                      'dna synthesis inhibitor', 'lacz targeted',
-                      'ccnd1 targeted', 's7902', 'clofarabine', 'ficz']
+    toy_50 =
 
-    for label in random_classes:
-        print(f"Beginning Feature Extraction for {label}!")
-        features = get_activations_for(model, label, directory=activation_loc+"base/", label_dir="")
-        # supplement_label(label)
-        features = get_activations_for(model, label, directory=activation_loc+"upsampled/", label_dir="upsampled")
-        print(f"Finished Feature Extraction for {label}!")
+
+    # random_classes = ['fgf-20', 'hpsi0513i-golb_2', 'distal convoluted tubule',
+    #                   'fcgammariia', 'pentoxifylline', 'oxybuprocaine', 'il-27',
+    #                   'phospholipase inhibitor', 'estropipate', 'tl-1a',
+    #                   'methacholine', 'cdk inhibitor', 'cobicistat', 'il-28a',
+    #                   'dna synthesis inhibitor', 'lacz targeted',
+    #                   'ccnd1 targeted', 's7902', 'clofarabine', 'ficz']
+    #
+    # for label in random_classes:
+    #     print(f"Beginning Feature Extraction for {label}!")
+    #     features = get_activations_for(model, label, directory=activation_loc+"base/", label_dir="")
+    #     # supplement_label(label)
+    #     features = get_activations_for(model, label, directory=activation_loc+"upsampled/", label_dir="upsampled")
+    #     print(f"Finished Feature Extraction for {label}!")
 

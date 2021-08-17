@@ -22,7 +22,7 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # PATHS
-if "D:\\"  in os.getcwd():
+if "D:\\" in os.getcwd():
     annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
     plot_dir = "M:/home/stan/cytoimagenet/figures/classes/"
 else:
@@ -200,7 +200,7 @@ class Upsampler():
 
         return (x_mins, x_maxs, y_mins, y_maxs), resolutions
 
-    def create_crops(self, img: Image.Image, num_crops: int):
+    def create_crops(self, img: np.array, num_crops: int):
         """Return tuple of two tuples:
             - with n image crops of possible sizes (1/2, 1/4, 1/8, 1/16)
             - with cropping information (list of x_min, list of x_max,
@@ -217,7 +217,7 @@ class Upsampler():
         # Create Quadrants
         num_crops = min(num_crops, 4)       # enforce num_crops <= 4
         (x_mins, x_maxs, y_mins, y_maxs), scaling = self.get_slicers(
-            img.size[0], img.size[1],
+            img.shape[0], img.shape[1],
             num_crops,
             70, 70)
 
@@ -230,10 +230,12 @@ class Upsampler():
         used_scaling = []
         # Loop through number of width crops & height crops
         for i in range(len(x_mins)):
-            img_crop = img.crop((x_mins[i], y_mins[i], x_maxs[i], y_maxs[i]))
-            # Save crop if not white/black
-            if sum(img_crop.getextrema()) <= 480 and sum(img_crop.getextrema()) >= 15:
-                img_crops.append(img_crop)
+            # img_crop = img.crop((x_mins[i], y_mins[i], x_maxs[i], y_maxs[i]))
+            img_crop = img[y_mins[i]:y_maxs[i], x_mins[i]:x_maxs[i]]
+            assert y_maxs[i] <= img.shape[0] and x_maxs[i] <= img.shape[1]
+            # Save crop if mean pixel intensity is greater than 1 and less than 254. And 75th percentile is not 0.
+            if img_crop.mean() > 1 and img_crop.mean() < 254 and np.percentile(img_crop, 75) != 0:
+                img_crops.append(normalize(img_crop) * 255)
                 used_xmins.append(x_mins[i])
                 used_xmaxs.append(x_maxs[i])
                 used_ymins.append(y_mins[i])
@@ -255,7 +257,7 @@ class Upsampler():
         new_names = []
         for i in range(len(imgs)):
             new_name = ".".join(lst_name[:-1]) + f"-crop_{i}.png"
-            imgs[i].convert("L").save(x.path.iloc[0] + "/" + new_name)
+            Image.fromarray(imgs[i]).convert("L").save(x.path.iloc[0] + "/" + new_name)
             new_names.append(new_name)
 
         return new_names
@@ -305,20 +307,30 @@ class Upsampler():
             # Load image, as grayscale
             img = cv2.imread(df_label.iloc[i].path + "/" + df_label.iloc[i].filename)
 
-            # If NoneType or max = 0, remove
+            # If NoneType or max = 0 or only 0 or 255, remove
             if img is None or img.max() == 0 or np.percentile(img, 0.01) == np.percentile(img, 99.9):
                 print("Bad image found!")
                 df_label_up = df_label_up[df_label_up.idx != image_idx]
                 remove_from_base.append(image_idx)
                 continue
+            elif len(np.unique(img)) == 2:     # if binary mask, try to recreate
+                print("Binary mask found!")
+                create_image(df_label.iloc[i])
+                img = cv2.imread(df_label.iloc[i].path + "/" + df_label.iloc[i].filename)
+                # If persists, remove from images
+                if len(np.unique(img)) == 2:
+                    print("Failed to create image...")
+                    df_label_up = df_label_up[df_label_up.idx != image_idx]
+                    remove_from_base.append(image_idx)
+                    continue
 
             # Get crops if dimensions of image >= 140x140
             if img.shape[0] >= 140 and img.shape[1] >= 140:
                 # Normalize
-                if img.max() != 255.0 or img.min() != 0.0:
-                    img = normalize(img) * 255
+                # if img.max() != 255.0 or img.min() != 0.0:
+                #     img = normalize(img) * 255
 
-                img = Image.fromarray(img).convert("L")
+                # img = Image.fromarray(img).convert("L")
 
                 # Create & save crops
                 crop_imgs, crop_info = self.create_crops(img, num_desired)
@@ -354,25 +366,28 @@ class Upsampler():
 
         # If exceeded 1000, randomly sample back to 1000
         if len(df_label_up) > 1000:
+            df_label_up['temp_index'] = list(range(len(df_label_up)))
+
             to_remove = df_label_up.groupby('idx').sample(n=1)
             if len(to_remove) >= len(df_label_up) - 1000:
-                to_remove_filenames = to_remove.sample(n=len(df_label_up) - 1000).filename.tolist()
+                to_remove_temp_index = to_remove.sample(n=len(df_label_up)-1000).temp_index.tolist()
             else:
                 # if to_remove is smaller than number of images needed to remove
-                to_remove_filenames = to_remove.filename.tolist()
+                to_remove_temp_index = to_remove.temp_index.tolist()
                 left_to_remove = (len(df_label_up) - 1000) - len(to_remove)
                 # randomly sample other images to remove
-                to_remove_filenames.extend(
-                    df_label_up[~df_label_up.filename.isin(to_remove.filename.tolist())].sample(n=left_to_remove).filename.tolist())
+                to_remove_temp_index.extend(df_label_up[~df_label_up.temp_index.isin(to_remove.temp_index.tolist())].sample(n=left_to_remove).temp_index.tolist())
 
-            print(f"Overflow! {len(to_remove_filenames)} removed.")
-            df_label_up = df_label_up[~df_label_up.filename.isin(to_remove_filenames)]
+            print(f"Overflow! {len(to_remove_temp_index)} removed.")
+            df_label_up = df_label_up[~df_label_up.temp_index.isin(to_remove_temp_index)]
+            df_label_up = df_label_up.drop(columns='temp_index')
 
         df_label_up.to_csv(annotations_dir + f"classes/upsampled/{label}.csv", index=False)
         print(f"Successfully Upsampled {label}! {len(df_label)} -> {len(df_label_up)}")
 
         # Update Base
-        df_label[~df_label.idx.isin(remove_from_base)].to_csv(annotations_dir + f"classes/{label}.csv", index=False)
+        if len(remove_from_base) > 0:
+            df_label[~df_label.idx.isin(remove_from_base)].to_csv(annotations_dir + f"classes/{label}.csv", index=False)
 
 
 def construct_label(label, overwrite=True):
@@ -533,6 +548,53 @@ def cytoimagenet_check_readable(labels):
 
     # Metadata
     df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
+
+# CHECK FILE SIZES > 6 KB
+def cytoimagenet_check_sizes():
+    df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+
+    def file_size_sufficient(x):
+        if os.path.getsize(x.path + "/" + x.filename) / 1000 <= 6:
+            print(x.dir_name)
+            return False
+        return True
+
+    sufficient_series = df.apply(file_size_sufficient, axis=1)
+    print(len(sufficient_series[~sufficient_series]), " images that are <= 6 KB!")
+    print("Affected Datasets: ", df[~sufficient_series].dir_name.unique().tolist())
+    print("Num Affected Labels: ", len(df[~sufficient_series].label.unique().tolist()))
+    print("Example Affected Labels: ", random.sample(df[~sufficient_series].label.unique().tolist(), 10))
+    df[~sufficient_series].to_csv("/ferrero/cytoimagenet/insufficient_filesize.csv", index=False)
+    df[sufficient_series].to_csv("/ferrero/cytoimagenet/sufficient_filesize.csv", index=False)
+
+
+# REMOVING IMAGES <= 6 KB
+def cytoimagenet_remove_insufficient():
+    """Remove images from cytoimagenet dataset that are less than or equal to
+    6 kilobytes in size.
+
+    ==Precondition==:
+        - cytoimagenet_check_sizes() was called beforehand.
+    """
+    df = pd.read_csv("/ferrero/cytoimagenet/insufficient_filesize.csv")
+
+    def remove_from_cytoimagenet(x):
+        os.remove(x.path + "/" + x.filename)
+    # Remove each image one by one
+    df.apply(remove_from_cytoimagenet, axis=1)
+
+    # Check for classes that are <= 287 images. Remove from cytoimagenet completely
+    df = pd.read_csv("/ferrero/cytoimagenet/sufficient_filesize.csv")
+    count_labels = df.groupby(by=['label']).count().iloc[:, 0]
+    below_thresh = count_labels[count_labels < 500].index.tolist()
+    for label in below_thresh:
+        dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-")
+        if os.path.exists(f'/ferrero/cytoimagenet/{dir_label}'):
+            os.system(f'rm -r /ferrero/cytoimagenet/{dir_label}')
+            print(f"Successfully removed {dir_label}")
+
+    print(len(below_thresh), 'classes removed!')
 
 
 # REMOVING REDUNDANT IMAGES
@@ -716,7 +778,7 @@ def fix_unreadable_files(label, df_metadata):
     print(keep_ilocations)
     print(remove_ilocations)
     # Assign label
-    df_["label"] = label.replace(" -- ", "/")
+    df_["label"] = label.replace(" -- ", "-")
 
     # Get absolute paths
     full_paths = df_.apply(lambda x: f"{x.path}/{x.filename}", axis=1).tolist()
@@ -761,20 +823,20 @@ def main(file):
     print(f"\n\n{label} currently processing!\n\n\n")
 
     # Check if images exist. If not, try to create images.
-    exists_series = df.apply(check_exists, axis=1)
-    # If not all exists, filter for only those that exist.
-    if not all(exists_series):
-        df = df[exists_series]
+    # exists_series = df.apply(check_exists, axis=1)
+    # # If not all exists, filter for only those that exist.
+    # if not all(exists_series):
+    #     df = df[exists_series]
 
     # Filter for tensorflow-readable images.
-    readable_series = df.apply(check_readable, axis=1)
-    # If not all are 'readable', try remerging image.
-    if not all(readable_series):
-        # Recreate Image
-        df[~readable_series].apply(create_image, axis=1)
-        # Recheck if images are tensorflow-readable. If not, only filter readable images.
-        readable_series = df.apply(check_readable, axis=1)
-        df = df[readable_series]
+    # readable_series = df.apply(check_readable, axis=1)
+    # # If not all are 'readable', try remerging image.
+    # if not all(readable_series):
+    #     # Recreate Image
+    #     df[~readable_series].apply(create_image, axis=1)
+    #     # Recheck if images are tensorflow-readable. If not, only filter readable images.
+    #     readable_series = df.apply(check_readable, axis=1)
+    #     df = df[readable_series]
 
     # # Remove class if less than 287 samples.
     # if len(df) < 287:
@@ -808,26 +870,33 @@ def main(file):
 if __name__ == '__main__' and "D:\\" not in os.getcwd():
     files = glob.glob(annotations_dir + "unused_classes/*.csv")
 
-    import json
-    with open(f"{annotations_dir}classes/used_images.json") as f:
-        used_indices = json.load(f)
+    Upsampler().supplement_label('ptdss1', True)
 
-    for file in files:
-        print(f"Checking {file}")
-        df_ = pd.read_csv(file)
+    df = pd.read_csv(f"{annotations_dir}classes/upsampled/{'ptdss1'}.csv")
 
-        # # Check exists. Only download those that exist
-        # exists_series = df_.apply(check_exists, axis=1)
-        # if not all(exists_series):
-        #     df_ = df_[exists_series]
-        #     df_.to_csv(file)
+    # Visualize images
+    i = 0
+    largest_binary_value = bin(len(df))[2:]
 
-        present = [idx in used_indices for idx in df_.idx.unique().tolist()]
-        if all(present):
-            print("All present in used_images.json!")
-        else:
-            print("Error! Not all present in used_images.json")
-            print(np.array(present).sum(), " out of ", len(present))
+    def copy_to_temp(x):
+        global i
+        new_filename = bin(i)[2:]
+        # If not same length of strings, zero extend
+        if len(largest_binary_value) != len(new_filename):
+            new_filename = '0' * (len(largest_binary_value) - len(new_filename)) + new_filename
+        # Add label
+        new_filename = f"ptdss1-{new_filename}." + x.filename.split(".")[-1]        # label-00001.(old_extension)
+        shutil.copy(x.path + "/" + x.filename, f'/ferrero/stan_data/temp/{new_filename}')
+        i += 1
+
+    df.apply(copy_to_temp, axis=1)
+
+    # cytoimagenet_check_sizes()
+    # cytoimagenet_remove_insufficient()
+
+
+
+
 
     all_labels = [i.split("classes/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "classes/*.csv")]
 
@@ -838,10 +907,10 @@ if __name__ == '__main__' and "D:\\" not in os.getcwd():
     # print("Metadata Length: ", len(pd.read_csv("/ferrero/cytoimagenet/metadata.csv")))
     #
     # cytoimagenet_recreate_metadata(all_labels)
-    # convert_png_cytoimagenet()
-    # cytoimagenet_check_readable(all_labels)
 
     if False:
+        convert_png_cytoimagenet()
+        cytoimagenet_check_readable(all_labels)
         df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
         print(all(df_metadata.checked))
         x = df_metadata[df_metadata.unreadable]
@@ -852,8 +921,6 @@ if __name__ == '__main__' and "D:\\" not in os.getcwd():
             to_remove.extend(fix_unreadable_files(label, df_metadata))
         if len(to_remove) > 0:
             df_metadata[~df_metadata.filename.isin(to_remove)].to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
-# x = df_.iloc[0]
-# img = cv2.imread("M:/" + x.path + "/" + x.filename)
-# name = x.filename
-# data_dir = 'M:/ferrero/stan_data/'
-# img_2 = cv2.imread(old_paths[0] + '/' + old_names[0])
+
+
+# sns.barplot(x=a, y=a.index.tolist(), orient='h')
