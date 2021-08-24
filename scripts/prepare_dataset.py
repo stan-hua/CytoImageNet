@@ -305,7 +305,9 @@ class Upsampler():
             row = df_label_up[df_label_up.idx == image_idx]
 
             # Load image, as grayscale
-            img = cv2.imread(df_label.iloc[i].path + "/" + df_label.iloc[i].filename)
+            img = cv2.imread(df_label.iloc[i].path + "/" + df_label.iloc[i].filename, cv2.IMREAD_GRAYSCALE)
+            if img is None:
+                img = np.array(Image.open(df_label.iloc[i].path + "/" + df_label.iloc[i].filename))
 
             # If NoneType or max = 0 or only 0 or 255, remove
             if img is None or img.max() == 0 or np.percentile(img, 0.01) == np.percentile(img, 99.9):
@@ -317,9 +319,10 @@ class Upsampler():
                 print("Binary mask found!")
                 create_image(df_label.iloc[i])
                 img = cv2.imread(df_label.iloc[i].path + "/" + df_label.iloc[i].filename)
+                if img is None:
+                    img = np.array(Image.open(df_label.iloc[i].path + "/" + df_label.iloc[i].filename))
                 # If persists, remove from images
                 if len(np.unique(img)) == 2:
-                    print("Failed to create image...")
                     df_label_up = df_label_up[df_label_up.idx != image_idx]
                     remove_from_base.append(image_idx)
                     continue
@@ -342,16 +345,19 @@ class Upsampler():
                 # Else, save new crops
                 new_filenames = self.save_crops(crop_imgs, row)
 
-                # Error-Handling
-                lengths = np.mean([len(info) for info in crop_info])
-                if np.mean(lengths) != len(crop_imgs) or np.mean(lengths) != len(new_filenames):
-                    print("Misaligned Crop Info!")
-                    print("Num Crops: ", len(crop_imgs), " ", len(new_filenames))
-                    print("Inner lengths of crop_info: ", lengths)
                 # Create metadata for new crops
-                row.at[row.index[0], "x_min"] = crop_info[0]
-                df_crops = row.explode("x_min", ignore_index=True)
-                df_crops['x_max'] = crop_info[1]
+                if len(crop_imgs) > 1:
+                    row.at[row.index[0], "x_min"] = crop_info[0]
+                    df_crops = row.explode("x_min", ignore_index=True)
+                else:
+                    df_crops = row
+                    df_crops['x_min'] = crop_info[0]
+                try:
+                    df_crops['x_max'] = crop_info[1]
+                except ValueError:
+                    print(df_crops)
+                    print("X-Maxs", crop_info[1])
+                    raise Exception
                 df_crops['y_min'] = crop_info[2]
                 df_crops['y_max'] = crop_info[3]
                 df_crops['scaling'] = crop_info[4]
@@ -392,7 +398,7 @@ class Upsampler():
 
 def construct_label(label, overwrite=True):
     # Directory label
-    dir_label = label.replace(" -- ", "-").replace(" ", "_")
+    dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
     # Skip if folder already exists
     if os.path.exists(f'/ferrero/cytoimagenet/{dir_label}') and not overwrite:
         return pd.DataFrame()
@@ -400,7 +406,10 @@ def construct_label(label, overwrite=True):
         os.system(f'rm -r /ferrero/cytoimagenet/{dir_label}')
         print(f"Removed files for {dir_label}")
 
+    # If upsampled label has less than 287 images, early exit
     df_ = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
+    if len(df_) < 287:
+        return pd.DataFrame()
 
     # Check exists. Only download those that exist
     exists_series = df_.apply(check_exists, axis=1)
@@ -415,7 +424,7 @@ def construct_label(label, overwrite=True):
     full_paths = df_.apply(lambda x: f"{x.path}/{x.filename}", axis=1).tolist()
 
     # Remove whitespace and conventions
-    dir_label = label.replace(" -- ", "-").replace(" ", "_")
+    dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
     print(f"Fixed: {label} -> {dir_label}")
 
     # Verify label directory exists. If not, create directory
@@ -458,7 +467,7 @@ def construct_cytoimagenet(labels: list, overwrite: bool = False):
     else:
         df_metadata = pd.DataFrame()
 
-    pool = multiprocessing.Pool(1)
+    pool = multiprocessing.Pool(20)
     accum_meta = pool.map(construct_label, labels)
     pool.close()
     pool.join()
@@ -589,7 +598,7 @@ def cytoimagenet_remove_insufficient():
     count_labels = df.groupby(by=['label']).count().iloc[:, 0]
     below_thresh = count_labels[count_labels < 500].index.tolist()
     for label in below_thresh:
-        dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-")
+        dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
         if os.path.exists(f'/ferrero/cytoimagenet/{dir_label}'):
             os.system(f'rm -r /ferrero/cytoimagenet/{dir_label}')
             print(f"Successfully removed {dir_label}")
@@ -652,7 +661,7 @@ def cytoimagenet_recreate_metadata(labels):
         full_paths = df_.apply(lambda x: f"{x.path}/{x.filename}", axis=1).tolist()
 
         # Remove whitespace and conventions
-        dir_label = label.replace(" -- ", "-").replace(" ", "_")
+        dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
 
         # Verify label directory exists. If not, create directory
         if not os.path.exists(f'/ferrero/cytoimagenet/{dir_label}'):
@@ -679,17 +688,44 @@ def cytoimagenet_recreate_metadata(labels):
     df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
 
 
+def cytoimagenet_fix_metadata():
+    """Clean CytoImageNet metadata."""
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    df_metadata.drop(columns=['unreadable', 'checked'], inplace=True)
+    df_metadata.microscopy = df_metadata.microscopy.map(lambda x: 'fluorescence' if x == "fluorescence (?)" else x)
+    df_metadata.microscopy = df_metadata.microscopy.map(lambda x: 'fluorescence|brightfield|darkfield' if x == "['fluorescence', 'brightfield', 'darkfield']" else x)
+    df_metadata.channels = df_metadata.channels.map(lambda x: 'fluorescence|brightfield|darkfield' if x == "['fluorescence', 'brightfield', 'darkfield']" else x)
+
+    df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
+
 # CONSTRUCT VALIDATION SET
-def construct_unused_labels(labels):
+def construct_unused_labels():
+    labels = [i.split("classes/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "unused_classes/*.csv")]
     pool = multiprocessing.Pool(10)
     accum_meta = pool.map(construct_unused_label, labels, True)
     pool.close()
     pool.join()
     df_val = pd.concat(accum_meta, ignore_index=True)
-    df_val.to_csv('/ferrero/stan_data_copy/unseen_classes/metadata.csv', index=False)
+
+    # Temp index
+    df_val['temp_index'] = list(range(len(df_val)))
+
+    # Convert images to PNG
+    non_png = df_val[~df_val.filename.str.contains(".png")]
+    if len(non_png) != 0:      # Exit if all PNG
+        png_filenames = non_png.apply(to_png, axis=1)
+        exists_series = png_filenames.map(lambda x: x is not None)
+        # Only update those that were converted successfully
+        idx_to_update = non_png[exists_series].temp_index.tolist()
+        idx = df_val.temp_index.isin(idx_to_update)
+        df_val.loc[idx, "filename"] = png_filenames[exists_series]
+
+    df_val.drop(columns=['temp_index'], inplace=True)
+    df_val.to_csv('/ferrero/stan_data/unseen_classes/metadata.csv', index=False)
 
 
-def construct_unused_label(label, overwrite=False):
+def construct_unused_label(label, overwrite=True):
     df_ = pd.read_csv(f"{annotations_dir}unused_classes/{label}.csv")
 
     # Check exists. Only download those that exist
@@ -705,12 +741,14 @@ def construct_unused_label(label, overwrite=False):
     full_paths = df_.apply(lambda x: f"{x.path}/{x.filename}", axis=1).tolist()
 
     # Remove whitespace and conventions
-    dir_label = label.replace(" -- ", "-").replace(" ", "_")
+    dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
     print(f"Fixed: {label} -> {dir_label}")
 
     # Verify label directory exists. If not, create directory
-    if not os.path.exists(f'/ferrero/stan_data_copy/unseen_classes/{dir_label}'):
-        os.mkdir(f'/ferrero/stan_data_copy/unseen_classes/{dir_label}')
+    if not os.path.exists('/ferrero/stan_data/unseen_classes/'):
+        os.mkdir('/ferrero/stan_data/unseen_classes/')
+    if not os.path.exists(f'/ferrero/stan_data/unseen_classes/{dir_label}'):
+        os.mkdir(f'/ferrero/stan_data/unseen_classes/{dir_label}')
 
     # Copy images to new directory
     new_filenames = []
@@ -722,13 +760,13 @@ def construct_unused_label(label, overwrite=False):
             new_filename = '0' * (len(largest_binary_value) - len(new_filename)) + new_filename
         # Add label
         new_filename = f"{dir_label}-{new_filename}." + full_paths[i].split(".")[-1]        # label-00001.(old_extension)
-        shutil.copy(full_paths[i], f'/ferrero/stan_data_copy/unseen_classes/{dir_label}/{new_filename}')
+        shutil.copy(full_paths[i], f'/ferrero/stan_data/unseen_classes/{dir_label}/{new_filename}')
         new_filenames.append(new_filename)
 
     # Update new filenames
     df_['filename'] = new_filenames
     # Update new path
-    df_["path"] = f'/ferrero/stan_data_copy/unseen_classes/{dir_label}'
+    df_["path"] = f'/ferrero/stan_data/unseen_classes/{dir_label}'
     print(f"Success! for {label.replace(' -- ', '/')}")
     return df_
 
@@ -771,7 +809,7 @@ def fix_unreadable_files(label, df_metadata):
             Image.open(x.path + "/" + x.filename)
             keep_ilocations.append(x.index)
         except:
-            remove_ilocations = x.index.tolist()
+            remove_ilocations.extend(x.index.tolist())
     # Early exit
     if len(keep_ilocations) == 0 and len(remove_ilocations) == 0:
         return []
@@ -784,7 +822,7 @@ def fix_unreadable_files(label, df_metadata):
     full_paths = df_.apply(lambda x: f"{x.path}/{x.filename}", axis=1).tolist()
 
     # Remove whitespace and conventions
-    dir_label = label.replace(" -- ", "-").replace(" ", "_")
+    dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
 
     # Copy images to new directory
     new_filenames = []
@@ -816,11 +854,42 @@ def fix_unreadable_files(label, df_metadata):
     return filenames_to_remove
 
 
-def main(file):
-    df = pd.read_csv(file)
-    label = file.replace(annotations_dir + "classes/", "").replace(".csv", "")
+def cytoimagenet_find_remove_below_thresh():
+    """Find labels in CytoImageNet that are below 287 images. Remove label
+    from metadata and dataset."""
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    print('endothelial' not in df_metadata.label.unique())
+    df_count = df_metadata.groupby('label').count().iloc[:, 0]
 
-    print(f"\n\n{label} currently processing!\n\n\n")
+    # Remove classes below 500 images
+    labels_to_remove = df_count[df_count < 500].index.tolist()
+    print(labels_to_remove)
+
+    for label in labels_to_remove:
+        dir_label = label.replace(" -- ", "-").replace(" ", "_").replace("/", "-").replace(",", "_")
+        os.system(f"rm -r /ferrero/cytoimagenet/{dir_label}")
+
+    # Save new metadata
+    df_metadata[~df_metadata.label.isin(labels_to_remove)].to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
+
+def cytoimagenet_fix_incorrect_filenaming():
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    old_paths = df_metadata[df_metadata.path.str.contains(",")].path.unique()
+    new_paths = [i.replace(",", "_") for i in old_paths]
+    for j in range(len(old_paths)):
+        os.rename(old_paths[j], new_paths[j])
+    df_metadata.path = df_metadata.path.str.replace(",", "_")
+
+    df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
+
+def main(file):
+    pass
+    # df = pd.read_csv(file)
+    # label = file.replace(annotations_dir + "classes/upsampled/", "").replace(".csv", "")
+
+    # print(f"\n\n{label} currently processing!\n\n\n")
 
     # Check if images exist. If not, try to create images.
     # exists_series = df.apply(check_exists, axis=1)
@@ -838,7 +907,7 @@ def main(file):
     #     readable_series = df.apply(check_readable, axis=1)
     #     df = df[readable_series]
 
-    # # Remove class if less than 287 samples.
+    # Remove class if less than 287 samples.
     # if len(df) < 287:
     #     print(f"Removed {label}")
     #     os.remove(file)
@@ -848,13 +917,13 @@ def main(file):
     #         shutil.rmtree(f"/ferrero/cytoimagenet/{label}")
 
     # Check if images are normalized. Normalize in place if not.
-    df.apply(check_normalized, axis=1)
+    # df.apply(check_normalized, axis=1)
 
     # Save results
-    df.to_csv(file, index=False)
+    # df.to_csv(file, index=False)
 
     # Upsample label
-    Upsampler().supplement_label(label, True)
+    # Upsampler().supplement_label(label, True)
 
     # Check if there are RGB images
     # Sample 2 rows from each dataset present
@@ -868,59 +937,42 @@ def main(file):
 
 
 if __name__ == '__main__' and "D:\\" not in os.getcwd():
-    files = glob.glob(annotations_dir + "unused_classes/*.csv")
+    files = glob.glob(annotations_dir + "classes/upsampled/*.csv")
 
-    Upsampler().supplement_label('ptdss1', True)
+    construct_unused_labels()
 
-    df = pd.read_csv(f"{annotations_dir}classes/upsampled/{'ptdss1'}.csv")
+    all_labels = [i.split("classes/upsampled/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "classes/upsampled/*.csv")]
 
-    # Visualize images
-    i = 0
-    largest_binary_value = bin(len(df))[2:]
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
 
-    def copy_to_temp(x):
-        global i
-        new_filename = bin(i)[2:]
-        # If not same length of strings, zero extend
-        if len(largest_binary_value) != len(new_filename):
-            new_filename = '0' * (len(largest_binary_value) - len(new_filename)) + new_filename
-        # Add label
-        new_filename = f"ptdss1-{new_filename}." + x.filename.split(".")[-1]        # label-00001.(old_extension)
-        shutil.copy(x.path + "/" + x.filename, f'/ferrero/stan_data/temp/{new_filename}')
-        i += 1
+    # pool = multiprocessing.Pool(30)
+    # pool.map(main, files)
+    # pool.close()
+    # pool.join()
 
-    df.apply(copy_to_temp, axis=1)
-
-    # cytoimagenet_check_sizes()
-    # cytoimagenet_remove_insufficient()
-
-
-
-
-
-    all_labels = [i.split("classes/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "classes/*.csv")]
-
-    # a_pool = multiprocessing.Pool(30)
-    # a_pool.map(main, files)
     # construct_cytoimagenet(all_labels, True)
-    #
+
     # print("Metadata Length: ", len(pd.read_csv("/ferrero/cytoimagenet/metadata.csv")))
     #
     # cytoimagenet_recreate_metadata(all_labels)
 
     if False:
-        convert_png_cytoimagenet()
-        cytoimagenet_check_readable(all_labels)
         df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-        print(all(df_metadata.checked))
         x = df_metadata[df_metadata.unreadable]
         unreadable_labels = (x.label.unique().tolist())
         print(unreadable_labels)
         to_remove = []
         for label in unreadable_labels:
             to_remove.extend(fix_unreadable_files(label, df_metadata))
+        print(to_remove)
         if len(to_remove) > 0:
             df_metadata[~df_metadata.filename.isin(to_remove)].to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
 
+    # Remove labels below 500 images
+    # find_remove_below_thresh()
 
-# sns.barplot(x=a, y=a.index.tolist(), orient='h')
+    # Fix filenaming
+    cytoimagenet_fix_incorrect_filenaming()
+
+    # Check filesizes
+    # cytoimagenet_check_sizes()

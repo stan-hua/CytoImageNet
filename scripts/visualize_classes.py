@@ -136,7 +136,8 @@ def is_outlier(embeds: pd.DataFrame):
 
 
 def create_umap(labels: Union[str, list],
-                directory: str = "imagenet-activations/", kind: str = ""):
+                directory: str = "imagenet-activations/", kind: str = "",
+                data_subset='train'):
     """Return tuple of UMAP 2D embeddings and labels for each row.
 
     ==Parameters==:
@@ -150,38 +151,43 @@ def create_umap(labels: Union[str, list],
     label_handle = []
     file_paths = []
 
-    for label in labels:
-        # Get all metadata for label
-        if kind == "upsampled":
-            class_meta_filename = f"{annotations_dir}classes/upsampled/{label}.csv"
-        elif kind == "base":
-            class_meta_filename = f"{annotations_dir}classes/{label}.csv"
-        df_class = pd.read_csv(class_meta_filename).reset_index(drop=True)
-        # exists_series = df_class.apply(check_exists, axis=1)
-        # df_class = df_class[exists_series]
-        # Activations
-        temp = pd.read_csv(f"{model_dir}{directory}/{kind}/{label}_activations.csv")
-        # num_null = temp.isna().any(axis=1).sum()
-        # if num_null > 0 and len(temp) == len(df_class):
-        #     print(f"{label} contains {num_null} null values!")
-        #     # Filter out NAs
-        #     df_class = df_class.loc[~temp.isna().sum(axis=1).map(lambda x: x > 0)]
-        #     df_class.to_csv(class_meta_filename, index=False)
-        #     print(f"{label} updated!")
-        # # Accumulate non-null activations
-        # temp = temp.dropna().reset_index(drop=True)
-        activations.append(temp)
+    if data_subset != 'val':
+        for label in labels:
+            # Get all metadata for label
+            if kind == "upsampled":
+                class_meta_filename = f"{annotations_dir}classes/upsampled/{label}.csv"
+            elif kind == "base":
+                class_meta_filename = f"{annotations_dir}classes/{label}.csv"
+            df_class = pd.read_csv(class_meta_filename).reset_index(drop=True)
+            # exists_series = df_class.apply(check_exists, axis=1)
+            # df_class = df_class[exists_series]
+            # Activations
+            temp = pd.read_csv(f"{model_dir}{directory}/{kind}/{label}_activations.csv")
+            # num_null = temp.isna().any(axis=1).sum()
+            # if num_null > 0 and len(temp) == len(df_class):
+            #     print(f"{label} contains {num_null} null values!")
+            #     # Filter out NAs
+            #     df_class = df_class.loc[~temp.isna().sum(axis=1).map(lambda x: x > 0)]
+            #     df_class.to_csv(class_meta_filename, index=False)
+            #     print(f"{label} updated!")
+            # # Accumulate non-null activations
+            # temp = temp.dropna().reset_index(drop=True)
+            activations.append(temp)
 
-        # Confirm activations and metadata match
-        if len(temp) != len(df_class):
-            print(kind, label, " has uneven activation - metadata")
-            print("Length Activations/Label Metadata: ", len(temp), len(df_class))
+            # Confirm activations and metadata match
+            if len(temp) != len(df_class):
+                print(kind, label, " has uneven activation - metadata")
+                print("Length Activations/Label Metadata: ", len(temp), len(df_class))
 
-        # Accumulate labels & absolute file paths
-        label_handle.extend([label] * len(temp))
-        file_paths.extend(df_class.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist())
+            # Accumulate labels & absolute file paths
+            label_handle.extend([label] * len(temp))
+            file_paths.extend(df_class.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist())
 
-    activations = pd.concat(activations, ignore_index=True)
+        activations = pd.concat(activations, ignore_index=True)
+    else:   # Get activations for validation set
+        activations = pd.read_csv(f"{model_dir}{directory}/unseen_classes_embeddings ({weights}, {dset}).csv")
+        df = pd.read_csv("/ferrero/stan_data/unseen_classes/metadata.csv")
+        label_handle = df.label.to_numpy()
 
     # Find 2D U-Map Embeddings
     reducer = umap.UMAP(random_state=42)
@@ -321,7 +327,8 @@ def from_label_to_paths(label: str, kind: str):
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # Parameters
-    weights = "imagenet"      # 'imagenet' or None
+    weights = "cytoimagenet"      # 'imagenet' or None
+    dset = 'toy_50'
 
     # Directory to load activations
     if weights is None:
@@ -353,20 +360,27 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # df_base = get_summary_similarities(embeds, labels)
     # df_base.to_csv(model_dir + "similarity/base.csv", index=False)
 
-    for kind in ["base", "upsampled"]:
-        # Get Embeddings
-        embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
-                                     kind=kind)
+    # VALIDATION SET
+    embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
+                                 kind=None, data_subset='val')
 
-        # Plot U-Map labeled by category labels
-        plot_umap(np.array(embeds), labels, name=f"{kind} (random 20, {weights})", save=True)
+    # Plot U-Map labeled by category labels
+    plot_umap(np.array(embeds), labels, name=f"unseen_classes ({weights}, {dset})", save=True)
 
-        # Convert to dataframe. Save labels
-        df_embed = pd.DataFrame(embeds)
-        df_embed["labels"] = labels
-        df_embed['full_path'] = full_paths
-
-        df_embed.to_csv(model_dir + f'{activation_loc}/{kind}_embeddings (random 20, {weights}).csv', index=False)
+    # for kind in ["base", "upsampled"]:
+    #     # Get Embeddings
+    #     embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
+    #                                  kind=kind)
+    #
+    #     # Plot U-Map labeled by category labels
+    #     plot_umap(np.array(embeds), labels, name=f"{kind} (random 20, {weights})", save=True)
+    #
+    #     # Convert to dataframe. Save labels
+    #     df_embed = pd.DataFrame(embeds)
+    #     df_embed["labels"] = labels
+    #     df_embed['full_path'] = full_paths
+    #
+    #     df_embed.to_csv(model_dir + f'{activation_loc}/{kind}_embeddings (random 20, {weights}).csv', index=False)
     # plot_umap_by('resolution', "upsampled", True)
 
 

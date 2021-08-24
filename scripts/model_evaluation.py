@@ -1,11 +1,10 @@
 from preprocessor import normalize as img_normalize
 from tensorflow.keras.applications import EfficientNetB0
-from tensorflow.keras.layers import GlobalMaxPooling2D
+from tensorflow.keras.layers import Dense
 import tensorflow as tf
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import preprocessing
-from sklearn.decomposition import PCA
 
 import os
 import cv2
@@ -19,6 +18,8 @@ import scipy.stats as stats
 import umap
 import seaborn as sns
 import matplotlib.pyplot as plt
+
+from multiprocessing import Pool
 
 # Plotting Settings
 sns.set_style("dark")
@@ -38,8 +39,8 @@ else:
 
 
 # Only use CPU
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # Remove warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -64,7 +65,9 @@ def load_metadata(dataset: str) -> pd.DataFrame:
     return df_labels
 
 
-def load_model(weights='imagenet'):
+def load_model(weights='cytoimagenet',
+               weights_filename='efficientnetb0_from_imagenet(lr_0001_bs_64_epochs_50).h5',
+               init='imagenet', overwrite=False):
     """Return EfficientNetB0 model. <weights> specify what weights to load into
     the model.
         - if weights == None, randomly initialize weights
@@ -74,56 +77,56 @@ def load_model(weights='imagenet'):
 
     """
     if weights == "cytoimagenet":
-        if False:
-            weights = f"{weights_dir}random_init/efficientnetb0_from_random-epoch_10.h5"
-            weights_notop = weights.replace(".h5", "-notop.h5")
-
-            if not os.path.exists(weights_notop):
-                model = tf.keras.models.Sequential()
-                old_model = EfficientNetB0(weights=weights,
-                                           input_shape=(224, 224, 3),
-                                           pooling="max",
-                                           classes=901)
-                # Remove prediction layers
-                old_model = tf.keras.Model(old_model.input, old_model.layers[-3].output)
-                old_model.save_weights(weights_notop)
-
-            # Load model weights with no top
-            model = EfficientNetB0(weights=weights_notop,
-                                   include_top=False,
-                                   input_shape=(None, None, 3),
-                                   pooling="max")
+        # Specify number of classes based on dset
+        if dset == 'toy_20':
+            num_classes = 20
+        elif dset == 'toy_50':
+            num_classes = 50
         else:
-            # USING OLD 20 CLASS DATASET
-            weights = f"{weights_dir}/efficientnetb0_from_random.h5"
-            weights_notop = weights.replace(".h5", "-notop.h5")
-            if not os.path.exists(weights_notop):
-                old_model = tf.keras.Sequential([
-                    EfficientNetB0(weights=None,
-                                   input_shape=(224, 224, 3),
-                                   pooling="max", include_top=False),
-                    tf.keras.layers.Dense(20, 'softmax')
-                ])
-                old_model.load_weights(weights)
-                # Remove prediction layers
-                old_model = old_model.layers[:-1][0]
-                old_model.save_weights(weights_notop)
+            num_classes = 894
 
-            # Load model weights with no top
-            model = EfficientNetB0(weights=weights_notop,
+        # Load weights
+        weights_str = f"{weights_dir}/{init}_init/{dset}/{weights_filename}"
+        weights_notop = weights_str.replace(".h5", "-notop.h5")
+
+        # Save notop weights if they don't exist
+        if not os.path.exists(weights_notop) or overwrite:
+            model_withtop = EfficientNetB0(weights=None,
+                                   input_shape=(224, 224, 3),
+                                   classes=num_classes)
+            model_withtop.load_weights(weights_str)
+
+            # Save weights without prediction layers
+            model = tf.keras.Model(model_withtop.input, model_withtop.layers[-3].output)
+            model.save_weights(weights_notop)
+
+        # Load model weights with no top
+        model = EfficientNetB0(weights=weights_notop,
+                               include_top=False,
+                               input_shape=(None, None, 3),
+                               pooling="avg")
+    elif weights is None:
+        weights_str = f'/home/stan/cytoimagenet/model/random_efficientnetb0-notop.h5'
+        if not os.path.exists(weights_str):     # if random weights doesn't exist yet
+            model = EfficientNetB0(weights=None,
                                    include_top=False,
                                    input_shape=(None, None, 3),
-                                   pooling="max")
-
-    else:
+                                   pooling="avg")
+            model.save_weights(weights_str)
+        model = EfficientNetB0(weights=weights_str,
+                               include_top=False,
+                               input_shape=(None, None, 3),
+                               pooling="avg")
+    else:   # if ImageNet or random
         model = EfficientNetB0(weights=weights,
                                include_top=False,
                                input_shape=(None, None, 3),
-                               pooling="max")
+                               pooling="avg")
     return model
 
 
-def extract_embeddings(concat=True, norm=False, weights="imagenet") -> pd.DataFrame:
+def extract_embeddings(concat=True, norm=False, weights="imagenet",
+                       overwrite=False) -> pd.DataFrame:
     """Create activations for BBBC021.
         - If concat, extract embeddings for each channel. Else, average channels
             to produce 1 grayscale image, then extract embeddings.
@@ -132,10 +135,11 @@ def extract_embeddings(concat=True, norm=False, weights="imagenet") -> pd.DataFr
             multiplying 255.
     """
     bbbc021_dir = f"{data_dir}bbbc021/"
-    model = load_model(weights)
+    model = load_model(weights, overwrite=overwrite)
+    df_metadata = load_metadata('bbbc021')
 
-    # HELPER FUNCTION: Extract activations for each image
-    def extract_activations(x):
+    def get_image(x):
+        """HELPER FUNCTION: Returns 3 channel images for each metadata row."""
         # Read channels
         imgs = []
         for channel in ["DAPI", "Tubulin", "Actin"]:
@@ -147,50 +151,67 @@ def extract_embeddings(concat=True, norm=False, weights="imagenet") -> pd.DataFr
 
         # If concat, extract embeddings from each image, then concatenate.
         if concat:
-            return pd.Series(model.predict(np.array(imgs)).flatten())
+            return np.array(imgs)
         # Average channels
         img = np.array(imgs).mean(axis=0)
-        return pd.Series(model.predict(np.expand_dims(img, axis=0)).flatten())
+        return np.expand_dims(img, axis=0)
 
-    df_metadata = load_metadata('bbbc021')
-    activations = df_metadata.apply(extract_activations, axis=1)
+    def test_generator():
+        for x in df_metadata.iterrows():
+            yield get_image(x[1])
+    ds_test = tf.data.Dataset.from_generator(test_generator, output_types=(tf.float32)).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+
+    accum_activations = model.predict(ds_test, batch_size=1, use_multiprocessing=True, workers=32)
+    if concat:  # concatenate 3 consecutive 1028-dim feature vectors for 1 image
+        proc_activations = []
+        for i in range(3, len(accum_activations)+1, 3):
+            proc_activations.append(accum_activations[i-3:i].flatten())
+        activations = pd.DataFrame(proc_activations)
+    else:
+        activations = pd.DataFrame(accum_activations)
 
     # Save extracted embeddings
-    filename = f"{evaluation_dir}{weights}_embeddings/bbbc021_embeddings"
-    if concat and norm:
-        filename += f" ({weights}, concat, norm)"
-    elif concat:
-        filename += f" ({weights}, concat)"
-    elif norm:
-        filename += f" ({weights}, norm)"
-    else:
-        filename += f" ({weights})"
+    weights_str = check_weights_str(weights)
+    filename = f"{evaluation_dir}{weights_str}_embeddings/bbbc021_embeddings"
+    filename += f" ({weights_str}, {create_save_str(concat, norm)})"
 
     activations.to_csv(f"{filename}.csv", index=False)
     return activations
 
 
-def load_activations_bbbc021(concat=True, norm=False, weights="imagenet") -> pd.DataFrame:
+def load_activations_bbbc021(concat=True, norm=False, weights="imagenet",
+                             overwrite=False) -> pd.DataFrame:
     """Return dataframe of activations (samples, features), where rows
     correspond to rows in the metadata.
     """
     # Filename of embeddings
-    filename = f"{evaluation_dir}{weights}_embeddings/bbbc021_embeddings"
-    if concat and norm:
-        filename += f" ({weights}, concat, norm)"
-    elif concat:
-        filename += f" ({weights}, concat)"
-    elif norm:
-        filename += f" ({weights}, norm)"
-    else:
-        filename += f" ({weights})"
-
-        # Load embeddings if present
-    if os.path.exists(f"{filename}.csv"):
-        activations = pd.read_csv(f"{filename}.csv")
+    weights_str = check_weights_str(weights)
+    filename = f"{evaluation_dir}{weights_str}_embeddings/bbbc021_embeddings"
+    suffix = f" ({weights_str}, {create_save_str(concat, norm)})"
+    # Load embeddings if present
+    if os.path.exists(f"{filename}{suffix}.csv") and not overwrite:
+        activations = pd.read_csv(f"{filename}{suffix}.csv")
     else:
         # If not, extract embeddings
-        activations = extract_embeddings(concat, norm, weights)
+        print(f"Beginning extraction of BBBC021 w/{suffix}...")
+        start = datetime.datetime.now()
+        activations = extract_embeddings(concat, norm, weights, overwrite=overwrite)
+        end = datetime.datetime.now()
+        total = timer(start, end)
+
+        # Log time taken
+        if not os.path.exists(evaluation_dir + f"bbbc021_inference_times({weights_str}).csv"):
+            df_time = pd.DataFrame({'to_grayscale': not concat, 'normalize': norm, 'minutes': total}, index=[0])
+            df_time.to_csv(evaluation_dir + f"bbbc021_inference_times({weights_str}).csv", index=False)
+        else:
+            df_time = pd.read_csv(evaluation_dir + f"bbbc021_inference_times({weights_str}).csv")
+            # Remove past record
+            df_time = df_time[(df_time.to_grayscale == concat) | (df_time.normalize != norm)]
+            # Add existing time
+            df_curr = pd.DataFrame({'to_grayscale': not concat, 'normalize': norm, 'minutes': total}, index=[0])
+            df_time = pd.concat([df_time, df_curr])
+            df_time.to_csv(evaluation_dir + f"bbbc021_inference_times({weights_str}).csv", index=False)
+
     return activations
 
 
@@ -228,7 +249,7 @@ def knn_classify(df_activations, unproc_labels: np.array, compounds: np.array,
 
     # Iterate through each sample. Match to existing samples.
     for i in range(len(df_activations)):
-        print(f"Classifying MOA: {unproc_labels[i]}, Compound: {compounds[i]}")
+        # print(f"Classifying MOA: {unproc_labels[i]}, Compound: {compounds[i]}")
 
         # Get k+1 neighbors of current sample, since 1st point is duplicate
         neigh_dist, neigh_ind = knn_model.kneighbors([df_activations.iloc[i]],
@@ -287,7 +308,8 @@ def knn_classify(df_activations, unproc_labels: np.array, compounds: np.array,
     df_results['accuracy_by_class'] = correct_by_class / total_by_class
     df_results['total_accuracy'] = correct / total
 
-    df_results.to_csv(f"{evaluation_dir}/{weights}_results/bbbc021_kNN_results({weights}, {create_save_str(concat, norm)}, k-{k}).csv", index=False)
+    weights_str = check_weights_str(weights)
+    df_results.to_csv(f"{evaluation_dir}/{weights_str}_results/bbbc021_kNN_results({weights_str}, {create_save_str(concat, norm)}, k-{k}).csv", index=False)
 
 
 # Helper Functions:
@@ -305,13 +327,23 @@ def create_save_str(concat: bool, norm: bool):
     return save_str_params
 
 
+def check_weights_str(weights):
+    if weights is not None:     # None -> 'random'
+        weights_str = weights
+    else:
+        weights_str = 'random'
+    return weights_str
+
+
 def get_results(concat, norm, weights):
     """Return Series containing kNN classification results averaged over all
     chosen k-values.
     """
+    weights_str = check_weights_str(weights)       # converts None -> 'random'
+
     accum = []
-    for k in [1, 5, 11, 25, 51]:
-        df_results = pd.read_csv(f"{evaluation_dir}{weights}_results/bbbc021_kNN_results({weights}, {create_save_str(concat, norm)}, k-{k}).csv")
+    for k in [1]:
+        df_results = pd.read_csv(f"{evaluation_dir}{weights_str}_results/bbbc021_kNN_results({weights_str}, {create_save_str(concat, norm)}, k-{k}).csv")
         accum.append(df_results.mean())
     df_return = pd.DataFrame(accum).mean().astype('object')
     df_return['to_grayscale'] = not concat
@@ -320,13 +352,15 @@ def get_results(concat, norm, weights):
 
 
 def get_all_results(weights):
+    """Aggregates results for <weights> and saves it into a csv file."""
+    weights_str = check_weights_str(weights)       # converts None -> 'random'
     accum = []
     for concat in [True, False]:
         for norm in [True, False]:
             accum.append(get_results(concat, norm, weights))
     df_results = pd.DataFrame(accum)
-    df_results['weights'] = weights
-    df_results.to_csv(f"{evaluation_dir}bbbc021_aggregated_results({weights}).csv", index=False)
+    df_results['weights'] = weights_str
+    df_results.to_csv(f"{evaluation_dir}bbbc021_aggregated_results({weights_str}).csv", index=False)
 
 
 def timer(start, end):
@@ -369,56 +403,21 @@ def umap_visualize(activations: np.array, labels: np.array, weights: str,
     if save:
         if not os.path.isdir(f"{plot_dir}umap/"):
             os.mkdir(f"{plot_dir}umap/")
-        plt.savefig(f"{plot_dir}umap/bbbc021_features({weights}, {create_save_str(concat, norm)}).png",
+        weights_str = check_weights_str(weights)       # converts None -> 'random'
+        plt.savefig(f"{plot_dir}umap/bbbc021_features({weights_str}, {create_save_str(concat, norm)}).png",
                     bbox_inches='tight', dpi=400)
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    weights = 'cytoimagenet'
-
-    # times = []
-    # print(f"Beginning extraction of BBBC021 w/ concat and norm...")
-    # start = datetime.datetime.now()
-    # extract_embeddings(True, True, weights)
-    # end = datetime.datetime.now()
-    # times.append(timer(start, end))
-    #
-    # print(f"Beginning extraction of BBBC021 w/ only concat...")
-    # start = datetime.datetime.now()
-    # extract_embeddings(True, False, weights)
-    # end = datetime.datetime.now()
-    # times.append(timer(start, end))
-    #
-    # print(f"Beginning extraction of BBBC021 w/ only norm...")
-    # start = datetime.datetime.now()
-    # extract_embeddings(False, True, weights)
-    # end = datetime.datetime.now()
-    # times.append(timer(start, end))
-    #
-    # print(f"Beginning extraction of BBBC021 (only merged channels)...")
-    # start = datetime.datetime.now()
-    # extract_embeddings(False, True, weights)
-    # end = datetime.datetime.now()
-    # times.append(timer(start, end))
-    #
-    # with open(evaluation_dir+f"bbbc021_inference_times ({weights}).txt", "w+") as f:
-    #     f.write("Feature extraction (concat, norm): ")
-    #     f.write(str(times[0]) + " minutes\n")
-    #     f.write("Feature extraction (concat): ")
-    #     f.write(str(times[1]) + " minutes\n")
-    #     f.write("Feature extraction (norm): ")
-    #     f.write(str(times[2]) + " minutes\n")
-    #     f.write("Feature extraction: ")
-    #     f.write(str(times[3]) + " minutes\n")
-
-    # else:
     # ==PARAMETERS==
-    for weights in ['cytoimagenet', 'imagenet']:
+    dset = 'toy_50'
+
+    for weights in ['cytoimagenet']:
         for concat in [True, False]:
             for norm in [True, False]:
                 dir_name = "bbbc021"
                 df_metadata = load_metadata(dir_name)
-                df_activations = load_activations_bbbc021(concat, norm, weights)
+                df_activations = load_activations_bbbc021(concat, norm, weights, overwrite=True)
 
                 # Get list of MOA for each treatment
                 labels = df_metadata.groupby(by=['treatment']).sample(n=1).moa.to_numpy()
@@ -430,18 +429,8 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
                 # Get mean feature vectors for each treatment
                 treatment_activations = df_activations.groupby(by=['treatment']).mean()
 
-                # # Normalize features between [0, 1]
-                # proc_treatment_activations = preprocessing.normalize(treatment_activations)
-                #
-                # # Reduce Dimensionality of Treatment Activations
-                # pca = PCA()
-                # proc_treatment_activations = pca.fit_transform(proc_treatment_activations)
-                # # Select only >= 99% cumulative percent variance
-                # cum_percent_variance = pca.explained_variance_ratio_.cumsum()
-                # num_pc = np.where(cum_percent_variance >= 0.99)[0][0]
-                # proc_treatment_activations = proc_treatment_activations[:, : num_pc+1]
-
-                k_values = [1, 5, 11, 25, 51]
+                # k_values = [1, 5, 11, 25, 51]
+                k_values = [1]
                 for k in k_values:
                     knn_classify(treatment_activations, labels, compounds, k,
                                  concat=concat, norm=norm, weights=weights)
@@ -449,6 +438,6 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
                 # Create UMap visualization of features
                 umap_visualize(treatment_activations, labels=labels, weights=weights,
                                concat=concat, norm=norm, save=True)
-
         # Get final results
         get_all_results(weights)
+        print(f"Done with {check_weights_str(weights)}!")
