@@ -25,11 +25,11 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 > * **category**: Name of column where label originates from (e.g. organism)
 
 > * **database**: Database containing source dataset
-> * **name**: Name of source dataset (*was given a name if no explicit name in database*)
-> * **dir_name**: Shorthand naming convention of dataset (*was given a naming convention if no explicit shorthand in database*)
+> * **name**: Name of source dataset (*created if no explicit name in database*)
+> * **dir_name**: Shorthand naming convention of dataset (*created if no explicit shorthand in database*)
 > * **path**: Relative path to folder containing image file. (e.g. /cytoimagenet/human)
 > * **filename**: Standardized filename based on binary of image number in class (e.g. human-00001011)
-> * **idx**: Index that maps to original image from source dataset. Takes the form of <dir_name>-<image number> (e.g. bbbbc041-14631)
+> * **idx**: Index that maps to original image from source dataset. (e.g. bbbbc041-14631)
 
 > * **organism**: Biological organism (e.g. human)
 > * **cell_type**: May refer to cell class (e.g. red blood cell) or cell line (e.g. u2os)
