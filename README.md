@@ -91,19 +91,20 @@ Of the 2.7 million row table, each column from [organism, cell_type, cell_visibl
 ---
 
 ### Image Data Cleaning & Standardization
-In general, there is no one-size-fits-all when it comes to microscopy images since the types of images collected vary based on the study. And a lack of a golden standard for storing image data makes data cleaning a dataset-specific task. The following steps are done on images included in classes.
+In general, there is no one-size-fits-all when it comes to microscopy images since the types of images collected vary based on the study. And a lack of a golden standard for storing image data makes data cleaning a dataset-specific task. The following steps are done on selected images...
 
-Data processing includes:
 * **Standardize file format** to PNG from other formats (TIF, JPG, FLEX, BMP, etc.)
-* Converting RGB images to grayscale.
+* Converting RGB images **to grayscale**.
 * If merging fluorescently stained channels, **normalize** each channel using 0.1th and 99.9th percentile pixel intensity.
 * **Merge** fluorescently stained channels to create grayscale images. 
 
 **NOTE**: Brightfield microscopy images are separated from fluorescent microscopy images.
+
 **NOTE**: Single channel images also exist (e.g. an image only stained for actin).
+
 **EXTRA NOTE**: Normalization procedure follows preprocessing used in training [DeepLoc](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5408780/) and helps in brightening dim images.
 
-Merging Procedure:
+> Merging Procedure:
 ![channel merging](https://user-images.githubusercontent.com/63123494/130717702-184e3b14-f4ad-4e27-b26b-a1d95e11c6e3.png)
 
 **RELEVANT CODE**: `preprocessor.py`, `prepare_dataset.py`
@@ -127,8 +128,8 @@ We extract ImageNet features and use UMAPs (a dimensionality reduction method) t
 Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional neural network architecture to train on CytoImageNet. Its relatively small number of parameters allows for faster training times, and it favorably limits the amount of information that can be learnt.
 
 ## Evaluation
-We validate the performance of our trained features on the popular BBBC021 evaluation protocol. The general procedure is as follows:
+We validate the performance of our trained features on the **BBBC021 evaluation protocol** from the Broad Institute. The general procedure is as follows:
 1. Extract image features from ~2000 images (*each 'image' is made of 3 grayscale fluorescent microscopy images*).
 2. Aggregate mean feature vector on treatment (compound - at specific concentration). Resulting in 103 feature vectors corresponding to 103 treatments.
-3. Using 1-nearest neighbors, classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
+3. Using **1-nearest neighbors**, classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
 4. Report overall not-same-compound (NSC) accuracy.
