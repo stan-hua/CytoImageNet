@@ -104,7 +104,7 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 
 **EXTRA NOTE**: Normalization procedure follows preprocessing used in training [DeepLoc](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5408780/) and helps in brightening dim images.
 
-> Merging Procedure:
+> **Merging Procedure**
 ![channel merging](https://user-images.githubusercontent.com/63123494/130717702-184e3b14-f4ad-4e27-b26b-a1d95e11c6e3.png)
 
 **RELEVANT CODE**: `preprocessor.py`, `prepare_dataset.py`
