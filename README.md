@@ -115,7 +115,7 @@ Merging Procedure:
 
 To increase image diversity and class size, we take 1-4 crops per image of different scale, preferably. Since microscopy images are not center-focused, we split the image into 4 non-overlapping windows. For each window, we randomly choose the crop size based on a scaling factor from [1/2, 1/4, 1/8, 1/16], making sure that crop sizes are above 70x70 pixels. Then we take the random crop from anywhere in the window. Crops are filtered for artifacts (completely white/black, too dark). Each crop is normalized once again with respect to the 0.1th and 99.9th percentile pixel intensity.
 
-We extract ImageNet features and use UMAPs (dimensionality reduction method) to visualize the effects of our chosen upsampling method on 20 randomly chosen classes. After upsampling, it becomes more difficult for ImageNet features to tell apart images in each class.
+We extract ImageNet features and use UMAPs (a dimensionality reduction method) to visualize the effects of our chosen upsampling method on 20 randomly chosen classes. After upsampling, it becomes more difficult for ImageNet features to tell apart images in each class.
 
 ![upsampling_effects](https://user-images.githubusercontent.com/63123494/130719806-e36fe929-f4b0-49de-b19d-3a5203e71851.png)
 
