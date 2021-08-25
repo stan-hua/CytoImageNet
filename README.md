@@ -111,7 +111,7 @@ Merging Procedure:
 ---
 
 ### Upsampling Classes
-![upsampling_procedure](https://user-images.githubusercontent.com/63123494/130721806-043ea6b8-b791-4909-aa6c-cf34c6a55105.png)
+![upsampling_procedure](https://user-images.githubusercontent.com/63123494/130723750-c7400d1a-31e1-4393-9ac3-e6f7117a58d7.png)
 
 To increase image diversity and class size, we take 1-4 crops per image of different scale, preferably. Since microscopy images are not center-focused, we split the image into 4 non-overlapping windows. For each window, we randomly choose the crop size based on a scaling factor from [1/2, 1/4, 1/8, 1/16], making sure that crop sizes are above 70x70 pixels. Then we take the random crop from anywhere in the window. Crops are filtered for artifacts (completely white/black, too dark). Each crop is normalized once again with respect to the 0.1th and 99.9th percentile pixel intensity.
 
