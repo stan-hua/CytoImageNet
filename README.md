@@ -127,9 +127,13 @@ We extract ImageNet features and use UMAPs (a dimensionality reduction method) t
 ## Model Training
 Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional neural network architecture to train on CytoImageNet. Its relatively small number of parameters allows for faster training times, and it favorably limits the amount of information that can be learnt.
 
+**RELEVANT CODE**: `model_pretraining.py`
+
 ## Evaluation
 We validate the performance of our trained features on the **BBBC021 evaluation protocol** from the Broad Institute. The general procedure is as follows:
 1. Extract image features from ~2000 images (*each 'image' is made of 3 grayscale fluorescent microscopy images*).
 2. Aggregate mean feature vector on treatment (compound - at specific concentration). Resulting in 103 feature vectors corresponding to 103 treatments.
 3. Using **1-nearest neighbors**, classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
 4. Report overall not-same-compound (NSC) accuracy.
+
+**RELEVANT CODE**: `model_evaluation.py`
