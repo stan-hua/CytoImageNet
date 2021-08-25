@@ -6,9 +6,9 @@ Motivation
 In past few decades, the increase in speed of data collection has led to the dawn of so-called '*big data*'. In the field of molecular biology, 
 this was seen in 'high throughput sequencing', where DNA and protein assays exceeded the capability of scientists to analyze large amount of datas.
 The need to develop computational methods that can match the rate at which data is collected sparked the era of 'bioinformatics'. In more recent years,
-our ability to capture and store biological images has grown tremendously. 
+our ability to capture and store biological images has grown tremendously to the point where we may consider microscopy images as '*big data*' as well. 
 
-There is now a need for **automated methods to help analyze biological images**.
+Thus, a need for **automated methods to help analyze biological images** emerges.
 Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals, compared to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
 
 ## About the data
