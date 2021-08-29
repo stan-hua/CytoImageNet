@@ -1,8 +1,10 @@
 from preprocessor import normalize
 from typing import Union
+from math import ceil, sqrt, floor
 
 import numpy as np
 import pandas as pd
+
 from PIL import Image
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -16,6 +18,8 @@ from sklearn.cluster import DBSCAN
 import umap
 import umap.plot
 
+import torch
+import torchvision
 
 if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -70,40 +74,91 @@ def load_images_from_label(label: str):
     return imgs
 
 
-def gridplot_images(imgs: list, label:str, save=False):
-    imgs_used = imgs.copy()
-    # Randomly sample 25
-    if len(imgs) > 25:
-        imgs_used = random.sample(imgs_used, 25)
-    nrows, ncols = 5, 5  # array of sub-plots
-    figsize = [6, 8]     # figure size, inches
+# GRIDPLOT
+def gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
+    """Plot grid of images. Use only as many to create a perfectly filled in
+     square."""
+    num_imgs = len(imgs)
+    n_sqrt = floor(sqrt(num_imgs))
+    nrows, ncols = n_sqrt, n_sqrt  # array of sub-plots
+    figsize = [8, 10]     # figure size, inches
 
-    # create figure (fig), and array of axes (ax)
-    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+    # Create subplots
+    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize,
+                           sharex=True, sharey=True)
 
-    # plot simple raster image on each sub-plot
+    # Plot image on each sub-plot
     n = 0
     for i, axi in enumerate(ax.flat):
-        axi.imshow(normalize(imgs_used[n]), cmap="gray")
+        axi.imshow(imgs[n], cmap="gray")
         axi.set_axis_off()
+        axi.set_aspect('equal')
         n += 1
-    fig.suptitle(label)
+
+    if fig_title is not None:
+        fig.suptitle(fig_title)
+
+    # Remove space between subplots
+    for j in range(min(100, nrows*ncols)):
+        plt.tight_layout(pad=0)
 
     if save:
-        plt.savefig(f"{plot_dir}class_grid_show/{label}_grid.png")
+        plt.savefig(f"{plot_dir}class_grid_show/{save_name}.png")
 
 
-def gridplot_labels(labels):
+def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
+    """Plot grid of images. Use only as many to create a perfectly filled in
+     square."""
+    num_imgs = len(imgs)
+    nrows = floor(sqrt(num_imgs))
+
+    used_imgs = imgs.copy()
+    random.shuffle(used_imgs)
+
+    if len(imgs) > nrows ** 2:      # sample images if above perfect square
+        used_imgs = random.sample(imgs, nrows ** 2)
+
+    # Convert list of images to tensor.
+    # Convert from (num_imgs, H, W, channels) to (num_imgs, channels, H, W)
+    imgs_as_tensor = torch.from_numpy(np.stack(used_imgs)).permute(0, 3, 1, 2)
+    # Create grid of images
+    grid_img = torchvision.utils.make_grid(imgs_as_tensor, nrow=nrows,
+                                           padding=0)
+
+    # Plot grayscale gridplot
+    plt.axis('off')
+    plt.figure(figsize=(10, 10))
+    plt.imshow(grid_img.permute(1, 2, 0), cmap='gray')
+    if fig_title is not None:
+        plt.title(fig_title)
+    if save:
+        plt.savefig(f"{plot_dir}class_grid_show/{save_name}.png", )
+
+
+def plot_labels(labels):
     """Create and save gridplots for each label in <labels>.
     """
     for label in labels:
         imgs = load_images_from_label(label)
-        if gridplot_images(imgs, label, True) is None:
+        if gridplot_images(imgs, fig_title=f"{label}", save=True) is None:
             print("Success! for " + label)
         else:
             print("No images for " + label)
 
 
+def plot_cytoimagenet():
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    df_metadata = df_metadata.groupby(by=['label']).sample(n=1).reset_index(drop=True)
+
+    imgs = []
+    for i in df_metadata.index:
+        im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
+        imgs.append(np.array(im.resize((28, 28))))
+
+    gridplot_images(imgs, save=True, save_name='cytoimagenet_plot')
+
+
+# CHECK FOR OUTLIERS
 def cluster_by_density(embeds):
     clusters = DBSCAN().fit(embeds.iloc[:, :2])
     return clusters.labels_
@@ -135,6 +190,7 @@ def is_outlier(embeds: pd.DataFrame):
     return df_embeds.outlier.to_numpy()
 
 
+# UMAP
 def create_umap(labels: Union[str, list],
                 directory: str = "imagenet-activations/", kind: str = "",
                 data_subset='train'):
@@ -259,7 +315,7 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
             gridplot_images(imgs, f"{kind} cluster_{cluster}", save=True)
 
         # Plot U-Map labeled by cluster assignment
-        plot_umap(np.array(df_embed.iloc[:, :2]), cluster_labels, name=f"{kind}_clustered", save=save)
+        plot_umap(np.array(df_embed.iloc[:, :2]), cluster_labels, name=f"{kind}/{kind}_clustered", save=save)
 
     if kind == "upsampled":
         label_dir = f"{annotations_dir}classes/upsampled/"
@@ -325,7 +381,7 @@ def from_label_to_paths(label: str, kind: str):
     return df.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist()
 
 
-if __name__ == "__main__" and "D:\\" not in os.getcwd():
+def main():
     # Parameters
     weights = "cytoimagenet"      # 'imagenet' or None
     dset = 'toy_50'
@@ -339,16 +395,6 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
         activation_loc = "imagenet-activations/"
 
     # Labels to Visualize
-    chosen = ['human', 'nucleus', 'cell membrane',
-              'white blood cell', 'kinase',
-              'wildtype', 'difficult',
-              'nematode', 'yeast', 'bacteria',
-              'vamp5 targeted', 'uv inactivated sars-cov-2',
-              'trophozoite', 'tamoxifen', 'tankyrase inhibitor',
-              'dmso', 'rho associated kinase inhibitor', 'rna',
-              'rna synthesis inhibitor', 'cell body'
-              ]
-
     random_classes = ['fgf-20', 'hpsi0513i-golb_2', 'distal convoluted tubule',
                       'fcgammariia', 'pentoxifylline', 'oxybuprocaine', 'il-27',
                       'phospholipase inhibitor', 'estropipate', 'tl-1a',
@@ -356,34 +402,16 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
                       'dna synthesis inhibitor', 'lacz targeted',
                       'ccnd1 targeted', 's7902', 'clofarabine', 'ficz']
 
-    # SIMILARITY
-    # df_base = get_summary_similarities(embeds, labels)
-    # df_base.to_csv(model_dir + "similarity/base.csv", index=False)
-
     # VALIDATION SET
     embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
-                                 kind=None, data_subset='val')
+                                             kind=None, data_subset='val')
 
     # Plot U-Map labeled by category labels
     plot_umap(np.array(embeds), labels, name=f"unseen_classes ({weights}, {dset})", save=True)
 
-    # for kind in ["base", "upsampled"]:
-    #     # Get Embeddings
-    #     embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
-    #                                  kind=kind)
-    #
-    #     # Plot U-Map labeled by category labels
-    #     plot_umap(np.array(embeds), labels, name=f"{kind} (random 20, {weights})", save=True)
-    #
-    #     # Convert to dataframe. Save labels
-    #     df_embed = pd.DataFrame(embeds)
-    #     df_embed["labels"] = labels
-    #     df_embed['full_path'] = full_paths
-    #
-    #     df_embed.to_csv(model_dir + f'{activation_loc}/{kind}_embeddings (random 20, {weights}).csv', index=False)
-    # plot_umap_by('resolution', "upsampled", True)
 
-
+if __name__ == "__main__" and "D:\\" not in os.getcwd():
+    plot_cytoimagenet()
 elif "D:\\" in os.getcwd():
     # df_base = pd.read_csv(model_dir + "similarity/base.csv")
     # df_up = pd.read_csv(model_dir + "similarity/upsampled.csv")

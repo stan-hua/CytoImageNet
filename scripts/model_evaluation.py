@@ -39,8 +39,8 @@ else:
 
 
 # Only use CPU
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-# os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # Remove warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -66,8 +66,8 @@ def load_metadata(dataset: str) -> pd.DataFrame:
 
 
 def load_model(weights='cytoimagenet',
-               weights_filename='efficientnetb0_from_imagenet(lr_0001_bs_64_epochs_50).h5',
-               init='imagenet', overwrite=False):
+               weights_filename='efficientnetb0_from_random-epoch_30.h5',
+               init='random', overwrite=False):
     """Return EfficientNetB0 model. <weights> specify what weights to load into
     the model.
         - if weights == None, randomly initialize weights
@@ -346,6 +346,9 @@ def get_results(concat, norm, weights):
         df_results = pd.read_csv(f"{evaluation_dir}{weights_str}_results/bbbc021_kNN_results({weights_str}, {create_save_str(concat, norm)}, k-{k}).csv")
         accum.append(df_results.mean())
     df_return = pd.DataFrame(accum).mean().astype('object')
+    # Get confidence interval for 103 feature vectors
+    acc = df_return['total_accuracy']
+    df_return['ci'] = 1.96 * np.sqrt((acc * (1 - acc)) / 103)
     df_return['to_grayscale'] = not concat
     df_return['normalized'] = norm
     return df_return
@@ -361,6 +364,14 @@ def get_all_results(weights):
     df_results = pd.DataFrame(accum)
     df_results['weights'] = weights_str
     df_results.to_csv(f"{evaluation_dir}bbbc021_aggregated_results({weights_str}).csv", index=False)
+
+
+def plot_all_results():
+    """Plots total accuracy with error """
+    for weights in ['cytoimagenet', 'imagenet', None]:
+        for concat in [True, False]:
+            for norm in [True, False]:
+                pass
 
 
 def timer(start, end):
@@ -404,13 +415,13 @@ def umap_visualize(activations: np.array, labels: np.array, weights: str,
         if not os.path.isdir(f"{plot_dir}umap/"):
             os.mkdir(f"{plot_dir}umap/")
         weights_str = check_weights_str(weights)       # converts None -> 'random'
-        plt.savefig(f"{plot_dir}umap/bbbc021_features({weights_str}, {create_save_str(concat, norm)}).png",
+        plt.savefig(f"{plot_dir}umap/bbbc021/bbbc021_features({weights_str}, {create_save_str(concat, norm)}).png",
                     bbox_inches='tight', dpi=400)
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # ==PARAMETERS==
-    dset = 'toy_50'
+    dset = 'full'
 
     for weights in ['cytoimagenet']:
         for concat in [True, False]:
