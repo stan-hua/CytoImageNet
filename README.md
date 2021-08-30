@@ -1,6 +1,8 @@
 # CytoImageNet
 A pretraining dataset for bioimage transfer learning. 
 
+![cytoimagenet_plot](https://user-images.githubusercontent.com/63123494/131281187-37ef3142-90bb-482e-a37f-4484a7d8f003.png)
+
 Motivation
 ---
 In past few decades, the increase in speed of data collection has led to the dawn of so-called '*big data*'. In the field of molecular biology, 
