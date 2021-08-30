@@ -73,7 +73,7 @@ For fluorescent microscopy images, images are typically grayscale with around 1-
 
 In total, this produced **2.7 million rows** with each row corresponding to an image and a unique image index.
 
-**RELEVANT CODE**: `clean_metadata.py`, `describe_dataset.py`
+**RELEVANT CODE**: [`clean_metadata.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data%20curation/clean_metadata.py), [`describe_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/describe_dataset.py)
 
 ---
 
@@ -88,7 +88,7 @@ Of the 2.7 million row table, each column from [organism, cell_type, cell_visibl
 5. If > 1000 images, sample 1000 rows by stratified sampling on columns in [organism, cell_type, cell visible, sirna, compound, phenotype].
 6. Save potential label and update hash table with used files.
 
-**RELEVANT CODE**: `analyze_metadata.py`
+**RELEVANT CODE**: [`analyze_metadata.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data%20curation/analyze_metadata.py)
 
 ---
 
@@ -109,7 +109,7 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 > **Merging Procedure**
 ![channel merging](https://user-images.githubusercontent.com/63123494/130717702-184e3b14-f4ad-4e27-b26b-a1d95e11c6e3.png)
 
-**RELEVANT CODE**: `preprocessor.py`, `prepare_dataset.py`
+**RELEVANT CODE**: [`preprocessor.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/preprocessor.py), [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/prepare_dataset.py)
 
 ---
 
@@ -122,14 +122,14 @@ We extract ImageNet features and use UMAPs (a dimensionality reduction method) t
 
 ![upsampling_effects](https://user-images.githubusercontent.com/63123494/130719806-e36fe929-f4b0-49de-b19d-3a5203e71851.png)
 
-**RELEVANT CODE**: `prepare_dataset.py`, `feature_extraction.py`, `visualize_classes.py`
+**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/prepare_dataset.py), [`feature_extraction.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/feature_extraction.py), [`visualize_classes.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/visualize_classes.py)
 
 ---
 
 ## Model Training
 Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional neural network architecture to train on CytoImageNet. Its relatively small number of parameters allows for faster training times, and it favorably limits the amount of information that can be learnt.
 
-**RELEVANT CODE**: `model_pretraining.py`
+**RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_pretraining.py)
 
 ## Evaluation
 We validate the performance of our trained features on the **BBBC021 evaluation protocol** from the Broad Institute. The general procedure is as follows:
@@ -138,4 +138,4 @@ We validate the performance of our trained features on the **BBBC021 evaluation 
 3. Using **1-nearest neighbors**, classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
 4. Report overall not-same-compound (NSC) accuracy.
 
-**RELEVANT CODE**: `model_evaluation.py`
+**RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
