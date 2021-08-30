@@ -14,7 +14,7 @@ Thus, a need for **automated methods to help analyze biological images** emerges
 Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals, compared to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
 
 ## About the data
-**890,217** total images. **894 classes** (~1000 per class).
+**890,217** total images. **894 classes** (~1000 images per class).
 
 Microscopy images belong to **40 openly available datasets** from the following databases: Recursion, Image Data Resource, Broad Bioimage Benchmark Collection,
 Kaggle and the Cell Image Library.
@@ -67,7 +67,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 ## Data Cleaning
 
 ### Annotation
-65 datasets were manually searched one by one, requiring dataset-specific annotation processing due to inconsistency and sometimes unreliability metadata. If metadata was available for all images, columns were selected and often transformed to create the standardized metadata for each image above. If not, metadata was curated based on available information about the dataset and assigned to all images in the dataset. Labels found in other datasets with different names were standardized and merged if found (e.g. neutrophil -> white blood cell, GPCR -> cell membrane). In the case that multiple labels exist for a category, multi-labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
+65 datasets were manually searched one by one, requiring dataset-specific annotation processing due to inconsistency and sometimes unreliability of available metadata. If metadata was available for all images, columns were selected and often transformed to create the standardized metadata for each image above. If not, metadata was curated based on available information about the dataset and assigned to all images in the dataset. Labels found in other datasets with different names were standardized and merged if found (e.g. neutrophil -> white blood cell, GPCR -> cell membrane). In the case that multiple labels exist for a category, multi-labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
 
 For fluorescent microscopy images, images are typically grayscale with around 1-7+ images depending on what is being stained for. Yet, these correspond to 1 row in the dataset. These pseudo (uncreated) images are given filenames that allow mapping to the original existing images to merge. These images with 1-7+ channels are merged as part of the data processing pipeline, if selected. 
 
@@ -78,7 +78,7 @@ In total, this produced **2.7 million rows** with each row corresponding to an i
 ---
 
 ### Weak Label Assignment & Stratified Downsampling
-Of the 2.7 million row table, each column from [organism, cell_type, cell_visible, phenotype, compound, gene, sirna] were searched for unique values and their counts, ignoring labels that overlap across columns. To create near to 1000 labels, potential labels with counts equal to or above a chosen threshold of 287 served as *potential labels*. Beginning from the least counts, potential labels were iterated through, keeping track of rows that were already assigned labels in a hash table via their unique index. Stratified sampling based on metadata curated is used to improve diversity of images selected for labels.
+Of the 2.7 million row table, each column from [organism, cell_type, cell_visible, phenotype, compound, gene, sirna] were searched for unique values and their counts, ignoring how labels group together between columns. To create near to 1000 labels, potential labels with counts equal to or above a chosen threshold of 287 served as *potential labels*. Beginning from the least counts, potential labels were iterated through, keeping track of rows that were already assigned labels in a hash table via their unique index. Stratified sampling based on metadata curated is used to improve diversity of images selected for labels.
 
 ***Pseudo-Code***: for each potential label
 1. Filter for images containing potential label in metadata AND not currently in hash table.
@@ -97,12 +97,11 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 
 * **Standardize file format** to PNG from other formats (TIF, JPG, FLEX, BMP, etc.)
 * Converting RGB images **to grayscale**.
-* If merging fluorescently stained channels, **normalize** each channel using 0.1th and 99.9th percentile pixel intensity.
-* **Merge** fluorescently stained channels to create grayscale images. 
+* If merging fluorescently stained channels, **normalize** each channel using 0.1th and 99.9th percentile pixel intensity, then **merge** channels to create grayscale images. 
 
 **NOTE**: Brightfield microscopy images are separated from fluorescent microscopy images.
 
-**NOTE**: Single channel images also exist (e.g. an image only stained for actin).
+**NOTE**: The dataset contains single channel images (e.g. an image only stained for actin, brightfield images).
 
 **EXTRA NOTE**: Normalization procedure follows preprocessing used in training [DeepLoc](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5408780/) and helps in brightening dim images.
 
@@ -118,7 +117,7 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 
 To increase image diversity and class size, we take 1-4 crops per image of different scale, preferably. Since microscopy images are not center-focused, we split the image into 4 non-overlapping windows. For each window, we randomly choose the crop size based on a scaling factor from [1/2, 1/4, 1/8, 1/16], making sure that crop sizes are above 70x70 pixels. Then we take the random crop from anywhere in the window. Crops are filtered for artifacts (completely white/black, too dark). Each crop is normalized once again with respect to the 0.1th and 99.9th percentile pixel intensity.
 
-We extract ImageNet features and use UMAPs (a dimensionality reduction method) to visualize the effects of our chosen upsampling method on 20 randomly chosen classes. After upsampling, it becomes more difficult for ImageNet features to tell apart images in each class.
+We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction method) to visualize the effects of our chosen upsampling method on 20 randomly chosen classes. After upsampling, it becomes more difficult for ImageNet features to separate images in each class.
 
 ![upsampling_effects](https://user-images.githubusercontent.com/63123494/130719806-e36fe929-f4b0-49de-b19d-3a5203e71851.png)
 
@@ -135,7 +134,7 @@ Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional 
 We validate the performance of our trained features on the **BBBC021 evaluation protocol** from the Broad Institute. The general procedure is as follows:
 1. Extract image features from ~2000 images (*each 'image' is made of 3 grayscale fluorescent microscopy images*).
 2. Aggregate mean feature vector on treatment (compound - at specific concentration). Resulting in 103 feature vectors corresponding to 103 treatments.
-3. Using **1-nearest neighbors**, classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
-4. Report overall not-same-compound (NSC) accuracy.
+3. Using **1-nearest neighbors** (kNN), classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
+4. Report accuracy, termed *'not-same-compound' **(NSC) accuracy***.
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
