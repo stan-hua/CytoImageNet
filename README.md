@@ -14,7 +14,7 @@ Thus, a need for **automated methods to help analyze biological images** emerges
 Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals, compared to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
 
 ## About the data
-**890,217** total images. **894 classes** (~1000 images per class).
+**890,217** total images. **894 classes** (~1000 images per class). 
 
 Microscopy images belong to **40 openly available datasets** from the following databases: Recursion, Image Data Resource, Broad Bioimage Benchmark Collection,
 Kaggle and the Cell Image Library.
@@ -60,6 +60,9 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 **NOTE**: In the case of multi-labels, labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
 
 **EXTRA NOTE**: All labels were converted to lowercase, which may make searching labels difficult, particularly with compound labels.
+
+### Availability of Data
+The dataset will be available for download soon!
 
 ---
 # Methods
@@ -131,10 +134,17 @@ Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional 
 **RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_pretraining.py)
 
 ## Evaluation
-We validate the performance of our trained features on the **BBBC021 evaluation protocol** from the Broad Institute. The general procedure is as follows:
+We validate the performance of our CytoImageNet features on three transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) 
+
+### BBBC021 Evaluation Protocol
+The procedure is as follows:
 1. Extract image features from ~2000 images (*each 'image' is made of 3 grayscale fluorescent microscopy images*).
 2. Aggregate mean feature vector on treatment (compound - at specific concentration). Resulting in 103 feature vectors corresponding to 103 treatments.
 3. Using **1-nearest neighbors** (kNN), classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
 4. Report accuracy, termed *'not-same-compound' **(NSC) accuracy***.
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
+
+
+## Acknowledgements
+This project was supervised by Professor [Alan Moses](http://www.moseslab.csb.utoronto.ca/people/amoses/) and Dr. [Alex Lu](https://www.alexluresearch.com/), who are both experts in the field of representation learning for biological images and sequence data. Without their guidance, I wouldn't have gotten this far on curating CytoImageNet. The project was funded by the University of Toronto CSB Undergraduate Research Award. Special thanks to Professor [Juan Caicedo](https://www.broadinstitute.org/bios/juan-c-caicedo) of the Broad Institute for his guidance on the BBBC021 evaluation protocol, and Professor [Anne Carpenter](https://www.broadinstitute.org/bios/anne-e-carpenter) for her help early on in understanding datasets in the Broad Bioimage Benchmark Collection.
