@@ -1,4 +1,4 @@
-from preprocessor import get_file_references
+from scripts.data_processing.preprocessor import get_file_references
 
 import os
 import glob

@@ -1,7 +1,5 @@
-from preprocessor import normalize
 from typing import Union
-from math import ceil, sqrt, floor
-
+from math import sqrt, floor
 import numpy as np
 import pandas as pd
 
@@ -120,7 +118,10 @@ def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plo
 
     # Convert list of images to tensor.
     # Convert from (num_imgs, H, W, channels) to (num_imgs, channels, H, W)
-    imgs_as_tensor = torch.from_numpy(np.stack(used_imgs)).permute(0, 3, 1, 2)
+    img_stack = np.stack(used_imgs)
+    rgb_stack = np.array([img_stack] * 3)
+    print(rgb_stack.shape)
+    imgs_as_tensor = torch.from_numpy(rgb_stack).permute(1, 0, 2, 3)
     # Create grid of images
     grid_img = torchvision.utils.make_grid(imgs_as_tensor, nrow=nrows,
                                            padding=0)
@@ -155,7 +156,7 @@ def plot_cytoimagenet():
         im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
         imgs.append(np.array(im.resize((28, 28))))
 
-    gridplot_images(imgs, save=True, save_name='cytoimagenet_plot')
+    torch_gridplot_images(imgs, save=True, save_name='cytoimagenet_plot2')
 
 
 # CHECK FOR OUTLIERS
@@ -194,7 +195,7 @@ def is_outlier(embeds: pd.DataFrame):
 def create_umap(labels: Union[str, list],
                 directory: str = "imagenet-activations/", kind: str = "",
                 data_subset='train'):
-    """Return tuple of UMAP 2D embeddings and labels for each row.
+    """Return tuple of two-dimensional UMAP embeddings and labels for each row.
 
     ==Parameters==:
         directory: specifies whether to use activations from randomly initiated
@@ -215,19 +216,8 @@ def create_umap(labels: Union[str, list],
             elif kind == "base":
                 class_meta_filename = f"{annotations_dir}classes/{label}.csv"
             df_class = pd.read_csv(class_meta_filename).reset_index(drop=True)
-            # exists_series = df_class.apply(check_exists, axis=1)
-            # df_class = df_class[exists_series]
             # Activations
             temp = pd.read_csv(f"{model_dir}{directory}/{kind}/{label}_activations.csv")
-            # num_null = temp.isna().any(axis=1).sum()
-            # if num_null > 0 and len(temp) == len(df_class):
-            #     print(f"{label} contains {num_null} null values!")
-            #     # Filter out NAs
-            #     df_class = df_class.loc[~temp.isna().sum(axis=1).map(lambda x: x > 0)]
-            #     df_class.to_csv(class_meta_filename, index=False)
-            #     print(f"{label} updated!")
-            # # Accumulate non-null activations
-            # temp = temp.dropna().reset_index(drop=True)
             activations.append(temp)
 
             # Confirm activations and metadata match
@@ -245,7 +235,7 @@ def create_umap(labels: Union[str, list],
         df = pd.read_csv("/ferrero/stan_data/unseen_classes/metadata.csv")
         label_handle = df.label.to_numpy()
 
-    # Find 2D U-Map Embeddings
+    # Extract 2-dimensional UMAP Embeddings
     reducer = umap.UMAP(random_state=42)
     embedding = reducer.fit_transform(activations)
 
@@ -259,19 +249,19 @@ def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False
         name: save figure as <name>.png
     """
     plt.figure()
-    try:
-        ax = sns.scatterplot(x=embeds[:, 0], y=embeds[:, 1],
-                             hue=labels,
-                             legend="full",
-                             alpha=1,
-                             palette="tab20",
-                             s=2,
-                             linewidth=0)
-    except:
-        print(name)
-        print("Embed Array Shape: ", embeds.shape)
-        print("Num Labels: ", len(labels))
-        raise Exception
+    # try:
+    ax = sns.scatterplot(x=embeds[:, 0], y=embeds[:, 1],
+                         hue=labels,
+                         legend="full",
+                         alpha=1,
+                         palette="tab20",
+                         s=3,
+                         linewidth=0)
+    # except:
+    #     print(name)
+    #     print("Embed Array Shape: ", embeds.shape)
+    #     print("Num Labels: ", len(labels))
+    #     raise Exception
 
     plt.legend(bbox_to_anchor=(1, 1), loc="upper left")
     plt.xlabel("")
@@ -368,6 +358,40 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
                     bbox_inches='tight', dpi=400)
 
 
+def plot_toy20_umap(save: bool = False):
+    """Plot UMap for 20 chosen classes subset from CytoImageNet."""
+    # Get activations and labels
+    df_embeds = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/toy_20_dset_embeddings.h5", 'embed')
+    labels = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/toy_20_dset_embeddings.h5", 'label')
+    # df_embeds['label'] = labels
+
+    # Create 2D UMAP Embeddings
+    reducer = umap.UMAP(random_state=42)
+    embeddings = reducer.fit_transform(df_embeds)
+    print(labels.shape)
+    print(embeddings.shape)
+
+    the_labels = pd.Series(labels).tolist()
+
+
+
+    # new_df_embeds = pd.DataFrame(embeddings)
+
+    # # Remove outliers
+    # df_embeds['cluster'] = cluster_by_density(new_df_embeds)
+    # df_embeds = df_embeds[df_embeds.cluster == new_df_embeds.cluster.mode().iloc[0]]
+    # filtered_labels = df_embeds.label.tolist()
+    #
+    # # Redo UMAP
+    # df_embeds = df_embeds.drop(columns=['label', 'cluster'])
+    # reducer = umap.UMAP(random_state=42)
+    # embeddings = reducer.fit_transform(df_embeds)
+
+    # Plot
+    plot_umap(embeddings, the_labels,
+              name='toy20_upsampled', save=save)
+
+
 def from_label_to_paths(label: str, kind: str):
     """Return all image paths for <label> under <kind> preprocessing.
 
@@ -411,15 +435,9 @@ def main():
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    plot_cytoimagenet()
+    # plot_cytoimagenet()
+    plot_toy20_umap(save=True)
 elif "D:\\" in os.getcwd():
-    # df_base = pd.read_csv(model_dir + "similarity/base.csv")
-    # df_up = pd.read_csv(model_dir + "similarity/upsampled.csv")
-    # df_full = pd.merge(df_base, df_up, on="label")
-    # df_full['change_intra_cos'] = df_full["intra_cos_y"] - df_full["intra_cos_x"]
-    # df_full['change_inter_cos'] = df_full["inter_cos_y"] - df_full["inter_cos_x"]
-    # df_full['change_vis_intra'] = df_full.apply(lambda x: str(x.intra_cos_x) + " -> " + str(x.intra_cos_y), axis=1)
-    # df_full['change_vis_inter'] = df_full.apply(lambda x: str(x.inter_cos_x) + " -> " + str(x.inter_cos_y), axis=1)
     pass
     # plot_umap_by('resolution', "upsampled", True)
     plot_umap_by('dataset', "base", True)

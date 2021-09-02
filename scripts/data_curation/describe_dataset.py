@@ -204,7 +204,7 @@ def plot_counts(df_counts: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
     # Change working directory
-    home_dir = "D:/projects/cytoimagenet/"
+    home_dir = "//"
     os.chdir(f"{home_dir}annotations")
 
     # Load Existing Info

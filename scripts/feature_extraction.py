@@ -1,3 +1,5 @@
+from model_evaluation import load_model
+
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.layers import Dense
@@ -7,6 +9,7 @@ import pandas as pd
 import numpy as np
 from numpy import dot
 from numpy.linalg import norm
+from math import ceil
 
 from sklearn import preprocessing
 from sklearn.decomposition import PCA
@@ -89,7 +92,7 @@ def test_datagen(label: str, label_dir, data_subset="train"):
 
     """
     if data_subset != 'val':
-        if label == 'toy_20':      # use labels from toy_20
+        if label == 'toy_20':      # use labels from toy_20, not upsampled
             accum_df = []
             for l in toy_20:
                 curr_df = pd.read_csv(f"{annotations_dir}classes/{label_dir}/{l}.csv")
@@ -97,7 +100,7 @@ def test_datagen(label: str, label_dir, data_subset="train"):
                 exists = curr_df.apply(lambda x: os.path.exists(x.path + "/" + x.filename), axis=1)
                 curr_df = curr_df[exists]
                 print(len(curr_df), ' exist for ', l)
-                # Sample 100
+                # Sample 100 from each class
                 accum_df.append(curr_df.sample(n=100))
             df = pd.concat(accum_df, ignore_index=True)
         else:
@@ -118,9 +121,10 @@ def load_img(x):
     return img_resized
 
 
-def get_activations_for(model, label: str, directory: str = "imagenet-activations/base",
-                        label_dir: str = "", method='gen', data_subset="train"):
-    """Load <model>. Extract activations for images under label.
+def extract_all_embeds(model, label: str, directory: str = "imagenet-activations/base",
+                        label_dir: str = "", method='gen', data_subset="train",
+                        weights='imagenet', dset='full'):
+    """Load <model>. Extract activations for all images under label.
     """
     if method == 'gen':
         # Create Image Generator for <label>
@@ -139,9 +143,10 @@ def get_activations_for(model, label: str, directory: str = "imagenet-activation
         )
         activations = model.predict(test_gen)
     else:   # iterative method
+        # Get metadata for images to extract features from
         df_test = test_datagen(label, label_dir, data_subset)
-        activations = []
 
+        # Load images using 30 cores
         pool = multiprocessing.Pool(30)
         try:
             imgs = pool.map(load_img, df_test.full_name.tolist())
@@ -149,6 +154,8 @@ def get_activations_for(model, label: str, directory: str = "imagenet-activation
             pool.join()
         except:
             pool.close()
+
+        # Remove Nones for images that were not found/improperly read
         idx_none = []
         final_imgs = []
         for i in range(len(imgs)):
@@ -156,9 +163,9 @@ def get_activations_for(model, label: str, directory: str = "imagenet-activation
                 idx_none.append(i)
             else:
                 final_imgs.append(imgs[i])
-        print(f"Found {len(idx_none)} Nones! ", idx_none)
         final_imgs = np.array(final_imgs)
-        print("Final Shape: ", final_imgs.shape)
+
+        # Extract embeddings
         activations = model.predict(final_imgs)
 
     # Save activations
@@ -201,188 +208,179 @@ def load_dataset(dset: str = 'full'):
         dataframe=df,
         directory=None,
         x_col='full_path',
-        batch_size=1,
+        batch_size=64,
         target_size=(224, 224),
         interpolation="bilinear",
         class_mode=None,
         color_mode="rgb",
-        shuffle=True,
+        shuffle=False,
         seed=728565
     )
     return train_generator, df.label.tolist()
 
 
-def extract_embeds_from_sample(dset, weights='/home/stan/cytoimagenet/model/cytoimagenet-weights/random_init/toy_20/efficientnetb0_from_random(lr_0001_bs_64)-notop.h5'):
+def extract_embeds_from_sample(dset, weights='cytoimagenet'):
     """Sample 100 images from each class. Extract embeddings for all samples and
     save in {model_dir}/imagenet-activations/full_dset_embeddings.csv"""
     global model_dir
+    if weights == 'cytoimagenet':
+        if dset == 'toy_20':
+            weights_str = 'efficientnetb0_from_random(lr_0001_bs_64).h5'
+        else:
+            weights_str = 'efficientnetb0_from_random-epoch_60.h5'
+    else:
+        weights_str = weights
+    # Load EfficientNetB0
+    model = load_model(weights=weights, weights_filename=weights_str, dset_=dset)
 
-    # Initialize pretrained EfficientNetB0.
-    model = EfficientNetB0(weights=weights,
-                           include_top=False,
-                           input_shape=(224, 224, 3),
-                           pooling="avg")
     # Load sampled images
     datagen, labels = load_dataset(dset)
     ds_test = tf.data.Dataset.from_generator(lambda: datagen, output_types=(tf.float32))
     ds_test = ds_test.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
     # Number of Steps till done Predicting
-    steps_to_predict = datagen.n // datagen.batch_size
+    steps_to_predict = ceil(datagen.n / datagen.batch_size)
     print("Beginning feature extraction...")
-    embeds = model.predict(ds_test, batch_size=1, steps=steps_to_predict,
+    embeds = model.predict(ds_test, steps=steps_to_predict,
                            use_multiprocessing=True, workers=32, verbose=1)
     print("Done extracting!")
     sampled_embeds = pd.DataFrame(embeds)
+
+    assert len(sampled_embeds) == len(labels)
+    print("Embeds and labels are of same length!")
     print('Saving features...')
-    sampled_embeds.to_hdf(f"{model_dir}/imagenet-activations/{dset}_dset_embeddings.h5", key='embed', index=False)
-    pd.Series(labels).to_hdf(f"{model_dir}/imagenet-activations/{dset}_dset_embeddings.h5", key='label', index=False)
+    sampled_embeds.to_hdf(f"{model_dir}/{weights}-activations/{dset}_dset_embeddings.h5", key='embed', index=False)
+    pd.Series(labels).to_hdf(f"{model_dir}/{weights}-activations/{dset}_dset_embeddings.h5", key='label', index=False)
     print("Done saving features!")
 
 
 # SIMILARITY METRICS
-def intra_similarity(label_features: np.array, n=10000) -> list:
-    """Calculate intra cosine similarities between images images (features) from one
-    label. Estimate by calculating cosine similarity for at most <n> pairs.
+class DiversityMetric:
+    def cosine_similarity(self, img1_img2: tuple) -> float:
+        """Return cosine similarity between image features of <img1_img2>[0] and
+        <img1_img2>[1].
+        """
+        img1, img2 = img1_img2
+        return dot(img1, img2) / (norm(img1) * norm(img2))
 
-    Return list of pairwise cosine similarities.
+    def intra_similarity(self, label_features: np.array, n=10000) -> list:
+        """Calculate intra cosine similarities between images images (features) from one
+        label. Estimate by calculating cosine similarity for at most <n> pairs.
 
-    ==Parameters==:
-        label_features: np.array where each row is a feature vector for one
-                        image
-    """
-    # ==REDUCE DIMENSIONALITY==:
-    # Normalize features between [0, 1]
-    # label_features = preprocessing.normalize(label_features)
+        Return list of pairwise cosine similarities.
 
-    # Reduce Dimensionality of Treatment Activations
-    # pca = PCA()
-    # proc_label_features = pca.fit_transform(label_features)
-    # # Select only >= 99% cumulative percent variance
-    # cum_percent_variance = pca.explained_variance_ratio_.cumsum()
-    # num_pc = np.where(cum_percent_variance >= 0.999)[0][0]
-    # print(num_pc, f'of {label_features.shape[1]} PCs Selected!')
-    # label_features = proc_label_features[:, : num_pc+1]
+        ==Parameters==:
+            label_features: np.array where each row is a feature vector for one
+                            image
+        """
+        pairs = np.array(list(combinations(label_features, 2)))
+        if len(pairs) > n:
+            pairs = pairs[np.random.choice(len(pairs), n, replace=False)]
 
-    pairs = np.array(list(combinations(label_features, 2)))
-    if len(pairs) > n:
-        pairs = pairs[np.random.choice(len(pairs), n, replace=False)]
+        cos_sims = []
+        for pair in pairs:
+            cos_sims.append(self.cosine_similarity(pair))
+        return cos_sims
 
-    cos_sims = []
-    for pair in pairs:
-        cos_sims.append(cosine_similarity(pair))
-    return cos_sims
+    def inter_similarity(self, label_features: np.array, other_features: np.array,
+                         n=10000) -> list:
+        """Calculate inter cosine similarities between images (features) from a
+        label and images from all other labels. Estimate by calculating cosine
+        similarity for at most <n> pairs.
 
+        Return list of pairwise cosine similarities.
 
-def inter_similarity(label_features: np.array, other_features: np.array,
-                     n=10000) -> list:
-    """Calculate inter cosine similarities between images (features) from a
-    label and images from all other labels. Estimate by calculating cosine
-    similarity for at most <n> pairs.
+        ==Parameters==:
+            label_features: np.array where each row is a feature vector for an image
+                            in label
+            other_features: np.array where each row is a feature vector for
+                            remaining labels
+        """
+        cos_sims = []
+        for i in range(n):
+            cos_sims.append(self.cosine_similarity((random.choice(label_features), random.choice(other_features))))
+        return cos_sims
 
-    Return list of pairwise cosine similarities.
+    def calculate_diversity(self, label: str, dset='toy_20', plot=False):
+        """Calculate inter-class diversity and intra-class diversity using pairwise
+        cosine similarity. Return mean and SD for inter and intra-class diversity.
 
-    ==Parameters==:
-        label_features: np.array where each row is a feature vector for an image
-                        in label
-        other_features: np.array where each row is a feature vector for
-                        remaining labels
-    """
-    cos_sims = []
-    for i in range(n):
-        cos_sims.append(cosine_similarity((random.choice(label_features), random.choice(other_features))))
-    return cos_sims
+        ==Parameters==:
+            label: CytoImageNet class to calculate diversity for
+        """
+        global model_dir
 
+        # Verify that embeddings for samples of the full dataset exists
+        if not os.path.exists(f"{model_dir}/imagenet-activations/{dset}_dset_embeddings.h5"):
+            extract_embeds_from_sample(dset)
 
-def cosine_similarity(img1_img2: tuple) -> float:
-    """Return cosine similarity between image features of <img1_img2>[0] and
-    <img1_img2>[1].
-    """
-    img1, img2 = img1_img2
-    return dot(img1, img2) / (norm(img1) * norm(img2))
+        df_embeds = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/{dset}_dset_embeddings.h5", 'embed')
+        labels = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/{dset}_dset_embeddings.h5", 'label')
+        df_embeds['label'] = labels
 
+        # ==INTRA DIVERSITY==:
+        # Calculate mean pairwise cosine similarity among 100 samples of the label
+        label_vecs = df_embeds[df_embeds.label == label].drop(columns=['label']).to_numpy()
+        other_label_vecs = df_embeds[df_embeds.label != label].drop(columns=['label']).to_numpy()
+        intra_similarities = self.intra_similarity(label_vecs)
 
-def calculate_diversity(label: str, dset='toy_20', plot=False):
-    """Calculate inter-class diversity and intra-class diversity using pairwise
-    cosine similarity. Return mean and SD for inter and intra-class diversity.
+        # ==INTER DIVERSITY==:
+        # Calculate mean pairwise cosine similarity between representative feature vector of label and other labels
+        inter_similarities = self.inter_similarity(label_vecs, other_label_vecs)
 
-    ==Parameters==:
-        label: CytoImageNet class to calculate diversity for
-    """
-    global model_dir
+        if np.random.choice(range(10), 1)[0] == 1 or plot:
+            fig, (ax1, ax2) = plt.subplots(2, 1)
+            sns.kdeplot(x=intra_similarities, hue=['Intra Diversity'] * len(intra_similarities), ax=ax1)
+            sns.kdeplot(x=inter_similarities, hue=['Inter Diversity'] * len(inter_similarities), ax=ax2)
+            ax1.set_xlabel("")
+            ax1.set_xlim(-0.05, 1)
+            ax2.set_xlabel("")
+            ax2.set_xlim(-0.05, 1)
+            plt.savefig(f"{plot_dir}classes/similarity/{label}_diversity({dset}).png")
+            plt.close(fig)
 
-    # Verify that embeddings for samples of the full dataset exists
-    if not os.path.exists(f"{model_dir}/imagenet-activations/{dset}_dset_embeddings.h5"):
-        extract_embeds_from_sample(dset)
+        return (np.mean(intra_similarities), np.std(intra_similarities)), (np.mean(inter_similarities), np.std(inter_similarities))
 
-    df_embeds = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/{dset}_dset_embeddings.h5", 'embed')
-    labels = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/{dset}_dset_embeddings.h5", 'label')
-    df_embeds['label'] = labels
+    def get_div(self, label, dset='toy_20'):
+        """Return pd.DataFrame containing diversity metrics for <label>."""
+        (intra_mean, intra_sd), (inter_mean, inter_sd) = self.calculate_diversity(label, dset=dset)
+        curr_div = pd.DataFrame({"label": label, "intra_cos_distance_MEAN": 1-intra_mean,
+                                 "intra_SD": intra_sd, "inter_cos_distance_MEAN": 1-inter_mean,
+                                 "inter_SD": inter_sd}, index=[0])
 
-    # ==INTRA DIVERSITY==:
-    # Calculate mean pairwise cosine similarity among 100 samples of the label
-    label_vecs = df_embeds[df_embeds.label == label].drop(columns=['label']).to_numpy()
-    other_label_vecs = df_embeds[df_embeds.label != label].drop(columns=['label']).to_numpy()
-    intra_similarities = intra_similarity(label_vecs)
+        return curr_div
 
-    # ==INTER DIVERSITY==:
-    # Calculate mean pairwise cosine similarity between representative feature vector of label and other labels
-    inter_similarities = inter_similarity(label_vecs, other_label_vecs)
+    def get_all_diversity(self, dset='full', kind=''):
+        """Save dataframe of summary stats for pairwise cosine similarities for
+        all 894 CytoImageNet labels.
+            - mean and std of INTRA-label pairwise cosine similarities
+            - mean and std of INTER-label pairwise cosine similarities
+        """
+        global toy_50, toy_20
+        df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
 
-    if np.random.choice(range(10), 1)[0] == 1 or plot:
-        fig, (ax1, ax2) = plt.subplots(2, 1)
-        sns.kdeplot(x=intra_similarities, hue=['Intra Diversity'] * len(intra_similarities), ax=ax1)
-        sns.kdeplot(x=inter_similarities, hue=['Inter Diversity'] * len(inter_similarities), ax=ax2)
-        ax1.set_xlabel("")
-        ax1.set_xlim(-0.05, 1)
-        ax2.set_xlabel("")
-        ax2.set_xlim(-0.05, 1)
-        plt.savefig(f"{plot_dir}classes/similarity/base_{label}_diversity.png")
+        if dset == 'toy_50':
+            df_metadata = df_metadata[df_metadata.label.isin(toy_50)]
+        elif dset == 'toy_20':
+            df_metadata = df_metadata[df_metadata.label.isin(toy_20)]
+        # try:
+        #     pool = multiprocessing.Pool(16)
+        #     accum_div = pool.map(get_div, df_metadata.label.unique().tolist())
+        #     pool.close()
+        #     pool.join()
+        # except Exception as e:
+        #     pool.close()
+        #     raise Exception(e.message)
+        accum_div = []
+        for label in df_metadata.label.unique().tolist():
+            try:
+                accum_div.append(self.get_div(label, dset=dset))
+            except:
+                print(label, ' errored!')
 
-    return (np.mean(intra_similarities), np.std(intra_similarities)), (np.mean(inter_similarities), np.std(inter_similarities))
+        df_diversity = pd.concat(accum_div, ignore_index=True)
+        df_diversity.to_csv(f'{model_dir}similarity/{kind}{dset}_diversity.csv', index=False)
 
-
-def get_div(label, dset='toy_20'):
-    (intra_mean, intra_sd), (inter_mean, inter_sd) = calculate_diversity(label, dset=dset)
-    curr_div = pd.DataFrame({"label": label, "intra_cos_distance_MEAN": 1-intra_mean,
-                             "intra_SD": intra_sd, "inter_cos_distance_MEAN": 1-inter_mean,
-                             "inter_SD": inter_sd}, index=[0])
-
-    return curr_div
-
-
-def get_all_diversity(dset='full', kind=''):
-    """Save dataframe of mean inter cosine similarity and mean intra
-    cosine similarity for all 894 CytoImageNet labels.
-    """
-    global toy_50, toy_20
-    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-
-    if dset == 'toy_50':
-        df_metadata = df_metadata[df_metadata.label.isin(toy_50)]
-    elif dset == 'toy_20':
-        df_metadata = df_metadata[df_metadata.label.isin(toy_20)]
-    # try:
-    #     pool = multiprocessing.Pool(16)
-    #     accum_div = pool.map(get_div, df_metadata.label.unique().tolist())
-    #     pool.close()
-    #     pool.join()
-    # except Exception as e:
-    #     pool.close()
-    #     raise Exception(e.message)
-    accum_div = []
-    for label in df_metadata.label.unique().tolist():
-        try:
-            accum_div.append(get_div(label, dset=dset))
-        except:
-            print(label, ' errored!')
-
-    df_diversity = pd.concat(accum_div, ignore_index=True)
-    df_diversity.to_csv(f'{model_dir}similarity/{kind}{dset}_diversity.csv', index=False)
-
-    return df_diversity
-
-
-
+        return df_diversity
 
 
 def main():
@@ -432,10 +430,15 @@ def main():
                                pooling="avg")
         model.trainable = False
 
-    get_activations_for(model, 'toy_20', activation_loc, method=method_data_loading,
-                        data_subset=data_subset, label_dir=label_dir)
+    extract_all_embeds(model, 'toy_20', activation_loc,
+                       method=method_data_loading,
+                       data_subset=data_subset, label_dir=label_dir,
+                       weights=weights, dset=dset)
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    # Get base diversity
-    get_all_diversity('toy_20', kind='base_')
+    dset = 'full'
+    # extract_embeds_from_sample(dset, weights='cytoimagenet')
+
+    div_metrics = DiversityMetric()
+    div_metrics.get_all_diversity(dset=dset)
