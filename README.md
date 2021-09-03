@@ -120,12 +120,22 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 
 To increase image diversity and class size, we take 1-4 crops per image of different scale, preferably. Since microscopy images are not center-focused, we split the image into 4 non-overlapping windows. For each window, we randomly choose the crop size based on a scaling factor from [1/2, 1/4, 1/8, 1/16], making sure that crop sizes are above 70x70 pixels. Then we take the random crop from anywhere in the window. Crops are filtered for artifacts (completely white/black, too dark). Each crop is normalized once again with respect to the 0.1th and 99.9th percentile pixel intensity.
 
-We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction method) to visualize the effects of our chosen upsampling method on 20 randomly chosen classes. After upsampling, it becomes more difficult for ImageNet features to separate images in each class.
+We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction method) to visualize the effects of our chosen upsampling method on 20 randomly chosen classes. After upsampling, we increase the diversity of our classes by introducing different resolutions (scaling). Notice that it becomes more difficult for ImageNet features to separate images in each class.
 
 ![upsampling_effects](https://user-images.githubusercontent.com/63123494/130719806-e36fe929-f4b0-49de-b19d-3a5203e71851.png)
 
 **RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/prepare_dataset.py), [`feature_extraction.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/feature_extraction.py), [`visualize_classes.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/visualize_classes.py)
 
+---
+
+### Quality Control
+Pre-upsampling, we discard PIL unreadable images from potential images.
+
+Post-upsampling, we remove the following kinds of images:
+1. **Uniform**/constant images (*only 1 unique pixel intensity*)
+2. **Binary masks** (*only 2 unique pixel intensities*)
+3. **Dim**/empty images
+> * We filter out dim images by excluding images whose 75th percentile pixel intensity is equal to 0. Intuitively, this would suggest that most of the image is dark. '75th percentile' was chosen based on plotting examples of dim images and experimenting with different thresholds.
 ---
 
 ## Model Training
@@ -134,14 +144,38 @@ Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional 
 **RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_pretraining.py)
 
 ## Evaluation
-We validate the performance of our CytoImageNet features on three transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) 
+We validate the performance of our CytoImageNet features on three classification-based transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) the **CyCLOPS Wt2** dataset.
 
 ### BBBC021 Evaluation Protocol
 The procedure is as follows:
-1. Extract image features from ~2000 images (*each 'image' is made of 3 grayscale fluorescent microscopy images*).
+1. Extract image features from ~2000 images (*each 'image' is made of **3** grayscale fluorescent microscopy images*).
 2. Aggregate mean feature vector on treatment (compound - at specific concentration). Resulting in 103 feature vectors corresponding to 103 treatments.
 3. Using **1-nearest neighbors** (kNN), classify mechanism-of-action (MOA) label, excluding neighbors with same compound treatments.
 4. Report accuracy, termed *'not-same-compound' **(NSC) accuracy***.
+
+### COOS-7
+This dataset was originally designed to test the out-of-sample generalizability of trained classifiers. For each of the 4 test sets, the evaluation procedure is as follows:
+1. Extract image features (*each 'image' is made of **2** grayscale fluorescent microscopy images*)
+2. Using a kNN, classify the protein's localization given in one of 7 labels.
+
+
+### CyCLOPS
+This dataset is composed of single cell images. The evaluation procedure is as follows:
+1. Extract image features (*each 'image' is made of **2** grayscale fluorescent microscopy images*)
+2. Using a kNN, classify the protein's localization given in one of 17 labels.
+
+
+#### NOTES on Feature Extraction
+> To create a fair comparison with ImageNet, we extract image features in 4 different methods:
+> 1. **concatenation** and **normalization**
+>    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
+>    * extract features from each channel and concatenate
+> 2. **concatenation** and no normalization
+>    * extract features from each channel and concatenate
+> 3. **merge** and **normalization**
+>    * extract features from each channel and concatenate
+> 4. **merge** and no normalization
+>    * extract features from each channel and concatenate
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
 
