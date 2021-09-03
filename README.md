@@ -18,7 +18,6 @@ Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a
 
 Microscopy images belong to **40 openly available datasets** from the following databases: Recursion, Image Data Resource, Broad Bioimage Benchmark Collection,
 Kaggle and the Cell Image Library. See below for the list of datasets included.
-![database_composition](https://user-images.githubusercontent.com/63123494/130711398-fcd9d10b-9162-4284-b294-76be30b8a61b.png)
 
 The classes are ***soft/weak labels***, so overlap is possible. Labels were assigned based on image metadata provided in the originating datasets. Chosen label could 
 correspond to any of [organism, cell_type, cell_visible, phenotype, compound, gene, sirna].
@@ -152,11 +151,11 @@ Adam Optimizer was the chosen optimizer. Hyperparameters: learning rate, batch s
 
 **RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_pretraining.py)
 
-## Evaluation
+## Evaluation (Transfer Tasks)
 We validate the performance of our CytoImageNet features on three classification-based transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) the **CyCLOPS Wt2** dataset.
 
 #### Methods of Feature Extraction
-Since ImageNet does not contain microscopy images or anything similar, we extract image features in 4 different methods to create a fairer comparison:
+Since ImageNet does not contain microscopy images, we extract image features in 4 different methods to create a fairer comparison:
 > 1. **concatenation** and **normalization**
 >    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
 >    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
@@ -194,7 +193,60 @@ This dataset is composed of single cell images. The evaluation procedure is as f
 
 ## Sources of Data
 
+![database_composition](https://user-images.githubusercontent.com/63123494/130711398-fcd9d10b-9162-4284-b294-76be30b8a61b.png)
 
+CytoImageNet image data comes from the open-source datasets listed below.
+> **NOTE**: If dataset name is too long (e.g. name of source publication), a shorter name is given.
+
+### Broad Bioimage Benchmark Collection
+> * [C. elegans infection marker](https://bbbc.broadinstitute.org/BBBC012)
+> * [C. elegans live/dead assay](https://bbbc.broadinstitute.org/BBBC010)
+> * [C. elegans metabolism assay](https://bbbc.broadinstitute.org/BBBC011)
+> * [Cell Cycle Jurkat Cells ](https://bbbc.broadinstitute.org/BBBC048)
+> * [Human HT29 colon-cancer cells shRNAi screen](https://bbbc.broadinstitute.org/BBBC017)
+> * [Human Hepatocyte and Murine Fibroblast cells – Co-culture experiment](https://bbbc.broadinstitute.org/BBBC026)
+> * [Human U2OS cells (out of focus)](https://bbbc.broadinstitute.org/BBBC006)
+> * [Human U2OS cells - compound cell-painting experiment](https://bbbc.broadinstitute.org/BBBC022)
+> * [Human U2OS cells cytoplasm–nucleus translocation](https://bbbc.broadinstitute.org/BBBC013)
+> * [Human U2OS cells cytoplasm–nucleus translocation (2)](https://bbbc.broadinstitute.org/BBBC014)
+> * [Human U2OS cells transfluor](https://bbbc.broadinstitute.org/BBBC015)
+> * [Human U2OS cells – RNAi Cell Painting experiment](https://bbbc.broadinstitute.org/BBBC025)
+> * [Human White Blood Cells](https://bbbc.broadinstitute.org/BBBC045)
+> * [Human kidney cortex cells](https://bbbc.broadinstitute.org/BBBC051)
+> * [Kaggle 2018 Data Science Bowl](https://bbbc.broadinstitute.org/BBBC038)
+> * [Murine bone-marrow derived macrophages](https://bbbc.broadinstitute.org/BBBC020)
+> * [P. vivax (malaria) infected human blood smears](https://bbbc.broadinstitute.org/BBBC041)
+> * [Synthetic cells](https://bbbc.broadinstitute.org/BBBC005)
+
+### Cell Image Library
+> * [Kinome Atlas](http://cellimagelibrary.org/pages/kinome_atlas)
+
+### Image Data Resource
+> * [Adenovirus](https://idr.openmicroscopy.org/webclient/?show=screen-2406)
+> * [Chemical-Genetic Interaction Map](https://idr.openmicroscopy.org/webclient/?show=screen-1151)
+> * [Compound Profiling](https://idr.openmicroscopy.org/webclient/?show=screen-1251)
+> * [Early Secretory Pathway](https://idr.openmicroscopy.org/webclient/?show=screen-803)
+> * [Mitotic Atlas](https://idr.openmicroscopy.org/webclient/?show=project-404)
+> * [Pericentriolar Material](https://idr.openmicroscopy.org/webclient/?show=project-51)
+> * [Perturbation](https://idr.openmicroscopy.org/webclient/?show=screen-2701)
+> * [Phenomic Profiling](https://idr.openmicroscopy.org/webclient/?show=screen-2651)
+> * [Plasticity](https://idr.openmicroscopy.org/webclient/?show=screen-51)
+> * [Subcellular Localization](https://idr.openmicroscopy.org/webclient/?show=screen-2952)
+> * [Variation in Human iPSC lines](https://idr.openmicroscopy.org/webclient/?show=screen-2051)
+> * [Yeast Meiosis](https://idr.openmicroscopy.org/webclient/?show=project-904)
+> * [siRNA screen for cell size and RNA production](https://idr.openmicroscopy.org/webclient/?show=screen-2751)
+
+### Kaggle
+> * [Cell Cycle Experiments](https://www.kaggle.com/paultimothymooney/cell-cycle-experiments)
+> * [Human Protein Atlas - Single Cell Classification](https://www.kaggle.com/c/hpa-single-cell-image-classification/data)
+> * [Human Protein Atlas Image Classification](https://www.kaggle.com/c/human-protein-atlas-image-classification/data)
+> * [Leukemia Classification](https://www.kaggle.com/andrewmvd/leukemia-classification)
+
+### Recursion
+> * [RxRx1](https://www.rxrx.ai/rxrx1#the-data)
+> * [RxRx19a](https://www.rxrx.ai/rxrx19a)
+> * [RxRx19b](https://www.rxrx.ai/rxrx19b)
+> * [RxRx2](https://www.rxrx.ai/rxrx2)
 
 ---
 
