@@ -76,7 +76,7 @@ For fluorescent microscopy images, images are typically grayscale with around 1-
 
 In total, this produced **2.7 million rows** with each row corresponding to an image and a unique image index.
 
-**RELEVANT CODE**: [`clean_metadata.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data%20curation/clean_metadata.py), [`describe_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/describe_dataset.py)
+**RELEVANT CODE**: [`clean_metadata.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_curation/clean_metadata.py), [`describe_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_curation/describe_dataset.py)
 
 ---
 
@@ -91,7 +91,7 @@ Of the 2.7 million row table, each column from [organism, cell_type, cell_visibl
 5. If > 1000 images, sample 1000 rows by stratified sampling on columns in [organism, cell_type, cell visible, sirna, compound, phenotype].
 6. Save potential label and update hash table with used files.
 
-**RELEVANT CODE**: [`analyze_metadata.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data%20curation/analyze_metadata.py)
+**RELEVANT CODE**: [`analyze_metadata.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_curation/analyze_metadata.py)
 
 ---
 
@@ -111,7 +111,7 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 > **Merging Procedure**
 ![channel merging](https://user-images.githubusercontent.com/63123494/130717702-184e3b14-f4ad-4e27-b26b-a1d95e11c6e3.png)
 
-**RELEVANT CODE**: [`preprocessor.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/preprocessor.py), [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/prepare_dataset.py)
+**RELEVANT CODE**: [`preprocessor.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/preprocessor.py), [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
 
 ---
 
@@ -124,7 +124,7 @@ We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction m
 
 ![upsampling_effects](https://user-images.githubusercontent.com/63123494/130719806-e36fe929-f4b0-49de-b19d-3a5203e71851.png)
 
-**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/prepare_dataset.py), [`feature_extraction.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/feature_extraction.py), [`visualize_classes.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/visualize_classes.py)
+**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py), [`feature_extraction.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/feature_extraction.py), [`visualize_classes.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/visualize_classes.py)
 
 ---
 
@@ -136,6 +136,8 @@ Post-upsampling, we remove the following kinds of images:
 2. **Binary masks** (*only 2 unique pixel intensities*)
 3. **Dim**/empty images
 > * We filter out dim images by excluding images whose 75th percentile pixel intensity is equal to 0. Intuitively, this would suggest that most of the image is dark. '75th percentile' was chosen based on plotting examples of dim images and experimenting with different thresholds.
+
+**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
 ---
 
 ## Model Training
@@ -169,13 +171,14 @@ This dataset is composed of single cell images. The evaluation procedure is as f
 > To create a fair comparison with ImageNet, we extract image features in 4 different methods:
 > 1. **concatenation** and **normalization**
 >    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
->    * extract features from each channel and concatenate
+>    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
 > 2. **concatenation** and no normalization
->    * extract features from each channel and concatenate
+>    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
 > 3. **merge** and **normalization**
->    * extract features from each channel and concatenate
+>    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
+>    * merge channel images into 1 grayscale image then extract features, resulting in 1280 features
 > 4. **merge** and no normalization
->    * extract features from each channel and concatenate
+>    * merge channel images into 1 grayscale image then extract features, resulting in 1280 features
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
 
