@@ -17,7 +17,7 @@ Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a
 **890,217** total images. **894 classes** (~1000 images per class). 
 
 Microscopy images belong to **40 openly available datasets** from the following databases: Recursion, Image Data Resource, Broad Bioimage Benchmark Collection,
-Kaggle and the Cell Image Library.
+Kaggle and the Cell Image Library. See below for the list of datasets included.
 ![database_composition](https://user-images.githubusercontent.com/63123494/130711398-fcd9d10b-9162-4284-b294-76be30b8a61b.png)
 
 The classes are ***soft/weak labels***, so overlap is possible. Labels were assigned based on image metadata provided in the originating datasets. Chosen label could 
@@ -62,7 +62,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 **EXTRA NOTE**: All labels were converted to lowercase, which may make searching labels difficult, particularly with compound labels.
 
 ### Availability of Data
-The dataset will be available for download soon!
+We plan to make the dataset available on Kaggle.
 
 ---
 # Methods
@@ -139,6 +139,7 @@ We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction m
 3. **Dim**/empty images
 > * This filter removes images whose 75th percentile pixel intensity is equal to 0. Intuitively, this would suggest that most of the image is dark. '75th percentile' was chosen based on plotting examples of dim images and experimenting with different thresholds.
 
+> **NOTE**: We have no guarantees for the quality of the data outside of these quality checks.
 
 **RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
 
@@ -155,7 +156,7 @@ Adam Optimizer was the chosen optimizer. Hyperparameters: learning rate, batch s
 We validate the performance of our CytoImageNet features on three classification-based transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) the **CyCLOPS Wt2** dataset.
 
 #### Methods of Feature Extraction
-To create a fair comparison with ImageNet, we extract image features in 4 different methods:
+Since ImageNet does not contain microscopy images or anything similar, we extract image features in 4 different methods to create a fairer comparison:
 > 1. **concatenation** and **normalization**
 >    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
 >    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
@@ -188,6 +189,12 @@ This dataset is composed of single cell images. The evaluation procedure is as f
 2. Using a kNN, classify the protein's localization given in one of 17 labels.
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
+
+---
+
+## Sources of Data
+
+
 
 ---
 
