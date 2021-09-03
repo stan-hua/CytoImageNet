@@ -129,13 +129,16 @@ We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction m
 ---
 
 ### Quality Control
-Pre-upsampling, we discard PIL unreadable images from potential images.
+*Pre-upsampling*, we discard PIL **unreadable** images from potential images.
 
-Post-upsampling, we remove the following kinds of images:
-1. **Uniform**/constant images (*only 1 unique pixel intensity*)
-2. **Binary masks** (*only 2 unique pixel intensities*)
+*Post-upsampling*, we discard the following kinds of images:
+1. **Uniform**/constant images
+> * This filter removes images with 0.1th and 99.9th percentile pixel intensities.
+2. **Binary masks**
+> * This filter removes images with only two unique pixel intensities.
 3. **Dim**/empty images
-> * We filter out dim images by excluding images whose 75th percentile pixel intensity is equal to 0. Intuitively, this would suggest that most of the image is dark. '75th percentile' was chosen based on plotting examples of dim images and experimenting with different thresholds.
+> * This filter removes images whose 75th percentile pixel intensity is equal to 0. Intuitively, this would suggest that most of the image is dark. '75th percentile' was chosen based on plotting examples of dim images and experimenting with different thresholds.
+
 
 **RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
 
