@@ -151,6 +151,21 @@ Adam Optimizer was the chosen optimizer. Hyperparameters: learning rate, batch s
 ## Evaluation
 We validate the performance of our CytoImageNet features on three classification-based transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) the **CyCLOPS Wt2** dataset.
 
+#### Methods of Feature Extraction
+To create a fair comparison with ImageNet, we extract image features in 4 different methods:
+> 1. **concatenation** and **normalization**
+>    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
+>    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
+> 2. **concatenation** and no normalization
+>    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
+> 3. **merge** and **normalization**
+>    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
+>    * merge channel images into 1 grayscale image then extract features, resulting in 1280 features
+> 4. **merge** and no normalization
+>    * merge channel images into 1 grayscale image then extract features, resulting in 1280 features
+
+---
+
 ### BBBC021 Evaluation Protocol
 The procedure is as follows:
 1. Extract image features from ~2000 images (*each 'image' is made of **3** grayscale fluorescent microscopy images*).
@@ -169,22 +184,9 @@ This dataset is composed of single cell images. The evaluation procedure is as f
 1. Extract image features (*each 'image' is made of **2** grayscale fluorescent microscopy images*)
 2. Using a kNN, classify the protein's localization given in one of 17 labels.
 
-
-#### NOTES on Feature Extraction
-> To create a fair comparison with ImageNet, we extract image features in 4 different methods:
-> 1. **concatenation** and **normalization**
->    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
->    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
-> 2. **concatenation** and no normalization
->    * extract features from each channel and concatenate, resulting in 1280 x (n channels) features
-> 3. **merge** and **normalization**
->    * normalize each channel filling in [0,1] with the 0.1th and 99.9th percentile pixel intensity
->    * merge channel images into 1 grayscale image then extract features, resulting in 1280 features
-> 4. **merge** and no normalization
->    * merge channel images into 1 grayscale image then extract features, resulting in 1280 features
-
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
 
+---
 
 ## Acknowledgements
 This project was supervised by Professor [Alan Moses](http://www.moseslab.csb.utoronto.ca/people/amoses/) and Dr. [Alex Lu](https://www.alexluresearch.com/), who are both experts in the field of representation learning for biological images and sequence data. Without their guidance, I would not have gotten this far. The project was funded by the University of Toronto CSB Undergraduate Research Award. 
