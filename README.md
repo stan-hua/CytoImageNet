@@ -142,7 +142,9 @@ Post-upsampling, we remove the following kinds of images:
 ---
 
 ## Model Training
-Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional neural network architecture to train on CytoImageNet. Its relatively small number of parameters allows for faster training times, and it favorably limits the amount of information that can be learnt.
+Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional neural network architecture to train on CytoImageNet. Its relatively small number of parameters favorably limits the amount of information that can be learnt, and it allows for faster training times.
+
+Adam Optimizer was the chosen optimizer. Hyperparameters: learning rate, batch size and number of epochs were tuned on a smaller 50 class subset of CytoImageNet. 
 
 **RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_pretraining.py)
 
