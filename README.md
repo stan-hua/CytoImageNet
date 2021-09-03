@@ -138,6 +138,7 @@ Post-upsampling, we remove the following kinds of images:
 > * We filter out dim images by excluding images whose 75th percentile pixel intensity is equal to 0. Intuitively, this would suggest that most of the image is dark. '75th percentile' was chosen based on plotting examples of dim images and experimenting with different thresholds.
 
 **RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
+
 ---
 
 ## Model Training
