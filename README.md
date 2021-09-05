@@ -11,7 +11,7 @@ The need to develop computational methods that can match the rate at which data 
 our ability to capture and store biological images has grown tremendously to the point where we may now consider microscopy images '*big data*'. 
 
 Thus, a need for **automated methods to help analyze biological images** emerges.
-Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals, compared to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
+Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals from microscopy images, in comparison to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
 
 ## About the data
 **890,217** total images. **894 classes** (~1000 images per class). 
