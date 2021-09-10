@@ -4,9 +4,11 @@ import tensorflow as tf
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import preprocessing
 
+import cv2
+import PIL
+
 import os
 import glob
-import cv2
 import warnings
 import datetime
 from typing import List, Optional
@@ -22,27 +24,31 @@ import matplotlib.pyplot as plt
 
 # Add scripts subdirectory to PATH
 import sys
-sys.path.append("./data_processing")
-from preprocessor import normalize as img_normalize
+
 
 # Plotting Settings
 sns.set_style("white")
 plt.style.use('seaborn-white')
+plt.rc('font', family='serif')
 
 # PATHS
 if "D:\\" in os.getcwd():
     annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
     data_dir = 'M:/ferrero/stan_data/'
     evaluation_dir = "M:/home/stan/cytoimagenet/evaluation/"
+    scripts_dir = "M:/home/stan/cytoimagenet/scripts"
     weights_dir = 'M:/home/stan/cytoimagenet/model/cytoimagenet-weights/'
     plot_dir = "M:/home/stan/cytoimagenet/figures/"
 else:
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
     data_dir = '/ferrero/stan_data/'
     evaluation_dir = "/home/stan/cytoimagenet/evaluation/"
+    scripts_dir = '/home/stan/cytoimagenet/scripts'
     weights_dir = '/home/stan/cytoimagenet/model/cytoimagenet-weights/'
     plot_dir = "/home/stan/cytoimagenet/figures/"
 
+sys.path.append(f"{scripts_dir}/data_processing")
+from preprocessor import normalize as img_normalize
 
 # Only use CPU
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -55,7 +61,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 def load_model(weights='cytoimagenet',
                weights_filename='efficientnetb0_from_random-epoch_16.h5',
-               init='random', overwrite=False, dset_=None):
+               init='random', overwrite=True, dset_=None):
     """Return EfficientNetB0 model. <weights> specify what weights to load into
     the model.
         - if weights == None, randomly initialize weights
@@ -128,19 +134,22 @@ def create_save_str(concat: bool, norm: bool):
     return save_str_params
 
 
-def check_weights_str(weights):
-    if weights is not None:     # None -> 'random'
-        weights_str = weights
-    else:
+def check_weights_str(weights, weights_suffix=''):
+    if weights is None:     # None -> 'random'
         weights_str = 'random'
+    elif weights == 'cytoimagenet':
+        weights_str = weights + weights_suffix
+    else:
+        weights_str = 'imagenet'
     return weights_str
 
 
-def timer(start, end):
+def timer(start, end, print_out=False):
     time_delta = (end - start)
     total_seconds = time_delta.total_seconds()
     minutes = total_seconds/60
-    print("Finished in ", round(minutes, 2), " minutes!")
+    if print_out:
+        print("Finished in ", round(minutes, 2), " minutes!")
     return minutes
 
 
@@ -163,6 +172,7 @@ class ImageGenerator:
         self.concat = concat
         self.norm = norm
         self.labels = labels
+        self.read_with = 'cv2'
 
     def get_image(self, paths: list):
         """Returns channel image/s after image operations specified in
@@ -170,7 +180,15 @@ class ImageGenerator:
         """
         imgs = []
         for path in paths:
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            # Load images using OpenCV by default. PIL is used otherwise.
+            if self.read_with == 'cv2':
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                # Begin reading with PIL if cv2 fails
+                if img is None:
+                    self.read_with = 'PIL'
+                    img = np.array(PIL.Image.open(path))
+            else:
+                img = np.array(PIL.Image.open(path))
 
             # Normalize between 0.1 and 99.9th percentile
             if self.norm:
@@ -213,13 +231,22 @@ class ValidationProcedure:
         4. Save results.
 
     ==Attributes==:
-        metadata: pandas DataFrame containing paths to channel images
-        data_dir: directory location of dataset
-        name: name of dataset (convention)
-        num_channels: number of channels for each image
-        path_gens: list of <num_channels> path iterators one for each channel
-        len_dataset: number of <num_channel> unique images in dataset
-        k_values: tuple of k values to test in kNN
+        metadata:
+            pandas DataFrame containing paths to channel images
+        data_dir:
+            directory location of dataset
+        name:
+            name of dataset (convention)
+        num_channels:
+            number of channels for each image
+        path_gens:
+            list of <num_channels> path iterators one for each channel
+        len_dataset:
+            number of <num_channel> unique images in dataset
+        k_values:
+            tuple of k values to test in kNN
+        cytoimagenet_weights_suffix:
+            suffix that specifies cytoimagenet weights used
     """
     def __init__(self, dset):
         self.metadata = self.load_metadata()
@@ -230,6 +257,8 @@ class ValidationProcedure:
         self.len_dataset = len(self.path_gens[0])
         self.k_values = (1,)
         self.dset = dset
+
+        self.cytoimagenet_weights_suffix = ''
 
     def load_metadata(self) -> pd.DataFrame:
         """ABSTRACT METHOD. To be implemented in subclass.
@@ -264,9 +293,8 @@ class ValidationProcedure:
         ds_test = ds_test.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
         steps_to_predict = ceil(len(test_generator) / batch_size)
         # Extract embeddings
-        accum_activations = model.predict(ds_test, verbose=2,
-                                          steps=steps_to_predict,
-                                          use_multiprocessing=True, workers=32)
+        accum_activations = model.predict(ds_test, verbose=1,
+                                          steps=steps_to_predict, workers=32)
 
         # Concatenate <num_channels> consecutive feature vectors that correspond to 1 image
         if concat:
@@ -279,7 +307,12 @@ class ValidationProcedure:
             activations = pd.DataFrame(accum_activations)
 
         # Save extracted embeddings
-        weights_str = check_weights_str(weights)
+        weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)
+
+        # Check if directory exists
+        if not os.path.exists(f"{evaluation_dir}/{weights_str}_embeddings"):
+            os.mkdir(f"{evaluation_dir}/{weights_str}_embeddings")
+
         filename = f"{evaluation_dir}{weights_str}_embeddings/{self.name}_embeddings"
         filename += f" ({weights_str}, {create_save_str(concat, norm)})"
 
@@ -295,7 +328,7 @@ class ValidationProcedure:
         If <overwrite>, extract embeddings again.
         """
         # Filename of embeddings
-        weights_str = check_weights_str(weights)
+        weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)
         filename = f"{evaluation_dir}{weights_str}_embeddings/{self.name}_embeddings"
         suffix = f" ({weights_str}, {create_save_str(concat, norm)})"
         # Load embeddings if present
@@ -308,6 +341,7 @@ class ValidationProcedure:
             activations = self.extract_embeddings(concat, norm, weights, overwrite=overwrite)
             end = datetime.datetime.now()
             total = timer(start, end)
+            print("Finished Feature Extraction in ", round(total, 2), " minutes!")
 
             # Log time taken
             if not os.path.exists(evaluation_dir + f"{self.name}_inference_times({weights_str}).csv"):
@@ -331,7 +365,8 @@ class ValidationProcedure:
     # Classifier
     def knn_classify(self, df_activations, unproc_labels: np.array,
                      k: int, metric='euclidean',
-                     weights: str = 'imagenet', concat=True, norm=True):
+                     weights: str = 'imagenet', concat=True, norm=True,
+                     overwrite=False):
         """Perform <k> Nearest Neighbors Classification of each sample, using
         activations in <df_activations>, and labels in <unproc_labels>.
 
@@ -344,6 +379,17 @@ class ValidationProcedure:
         ==Parameters==:
             - df_activations is array of (num_samples, num_features)
         """
+        weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)
+
+        # End early if results already exist
+        if not overwrite and os.path.exists(f"{evaluation_dir}/{weights_str}_results/"
+                                            f"{self.name}_kNN_results({weights_str}, "
+                                            f"{create_save_str(concat, norm)}, k-{k}).csv"):
+            return
+
+        # Timing kNN
+        start = datetime.datetime.now()
+
         # Enforce precondition
         assert len(df_activations) == len(unproc_labels)
         # Convert from numpy array to pandas dataframe
@@ -362,7 +408,8 @@ class ValidationProcedure:
         total = 0.0
 
         # Fit KNN Classifier on the entire dataset
-        knn_model = KNeighborsClassifier(n_neighbors=k, metric=metric)
+        knn_model = KNeighborsClassifier(n_neighbors=k, metric=metric,
+                                         algorithm='brute')
         knn_model.fit(df_activations, labels)
 
         # Iterate through each sample. Match to existing samples.
@@ -401,8 +448,16 @@ class ValidationProcedure:
         df_results['accuracy_by_class'] = correct_by_class / total_by_class
         df_results['total_accuracy'] = correct / total
 
-        weights_str = check_weights_str(weights)
+        # Check if directory exists
+        if not os.path.exists(f"{evaluation_dir}/{weights_str}_results"):
+            os.mkdir(f"{evaluation_dir}/{weights_str}_results")
+
         df_results.to_csv(f"{evaluation_dir}/{weights_str}_results/{self.name}_kNN_results({weights_str}, {create_save_str(concat, norm)}, k-{k}).csv", index=False)
+
+        # Check time for kNN Predictions
+        end = datetime.datetime.now()
+        time_taken = timer(start, end)
+        print(f"Finished {k}-NN prediction in ", round(time_taken, 2), " minutes!")
 
     # MAIN FUNCTION
     def evaluate(self, weights, concat, norm):
@@ -415,7 +470,7 @@ class ValidationProcedure:
         """Return Series containing kNN classification results averaged over all
         chosen k-values.
         """
-        weights_str = check_weights_str(weights)       # converts None -> 'random'
+        weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)       # converts None -> 'random'
 
         accum = []
         for k in self.k_values:
@@ -431,7 +486,7 @@ class ValidationProcedure:
 
     def get_all_results(self, weights):
         """Aggregates results for <weights> and saves it into a csv file."""
-        weights_str = check_weights_str(weights)       # converts None -> 'random'
+        weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)       # converts None -> 'random'
         accum = []
         for concat in [True, False]:
             for norm in [True, False]:
@@ -450,10 +505,8 @@ class ValidationProcedure:
         accum_df = []
         for i in range(len(all_weights)):
             curr_df = pd.read_csv(f"{evaluation_dir}{self.name}_aggregated_results({all_weights[i]}).csv")
-            if curr_df.ci.isna().sum() > 0 and self.name == 'bbbc021':
-                curr_df['ci'] = curr_df.apply(lambda x: 1.96 * np.sqrt((x.total_accuracy * (1 - x.total_accuracy)) / 103), axis=1)
-            curr_df['preproc_method'] = curr_df.apply(lambda x: create_save_str(not x.to_grayscale, x.normalized),
-                                                      axis=1)
+            curr_df['ci'] = curr_df.apply(lambda x: 1.96 * np.sqrt((x.total_accuracy * (1 - x.total_accuracy)) / self.len_dataset), axis=1)
+            curr_df['preproc_method'] = curr_df.apply(lambda x: create_save_str(not x.to_grayscale, x.normalized), axis=1)
             accum_df.append(curr_df)
         df = pd.concat(accum_df, ignore_index=True)
 
@@ -472,7 +525,7 @@ class ValidationProcedure:
                                 yerr=curr_df['ci'], fmt='none', c='black', zorder=0,
                                 alpha=0.5)
 
-                axs[i].set_title(methods[i].capitalize())
+                axs[i].set_title(methods[i])
                 axs[i].set_xlabel('')
                 axs[i].tick_params(axis='x', rotation=90)
                 axs[i].set_ylim([0, 1.0])
@@ -486,11 +539,6 @@ class ValidationProcedure:
             axs = axs.ravel()
             for i in range(len(all_weights)):
                 curr_df = df[df.weights == all_weights[i]]
-                if curr_df.ci.isna().sum() > 0 and self.name == 'bbbc021':
-                    curr_df['ci'] = curr_df.apply(lambda x: 1.96 * np.sqrt((x.total_accuracy * (1 - x.total_accuracy)) / 103), axis=1)
-                curr_df['preproc_method'] = curr_df.apply(lambda x: create_save_str(not x.to_grayscale, x.normalized),
-                                                          axis=1)
-                accum_df.append(curr_df)
 
                 # Plot
                 sns.pointplot(x="preproc_method", y="total_accuracy",
@@ -534,12 +582,10 @@ class ValidationProcedure:
                              s=2,
                              linewidth=0)
 
-        plt.legend(bbox_to_anchor=(1, 1), loc="upper left")
+        ax.legend(loc='center left', bbox_to_anchor=(1.25, 0.5), ncol=1)
         plt.xlabel("")
         plt.ylabel("")
-        plt.tick_params(left=False,
-                        bottom=False,
-                        labelleft=False,
+        plt.tick_params(left=False, bottom=False, labelleft=False,
                         labelbottom=False)
         plt.tight_layout()
 
@@ -548,7 +594,7 @@ class ValidationProcedure:
         if save:
             if not os.path.isdir(f"{plot_dir}umap/{self.name}"):
                 os.mkdir(f"{plot_dir}umap/{self.name}")
-            weights_str = check_weights_str(weights)       # converts None -> 'random'
+            weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)       # converts None -> 'random'
             plt.savefig(f"{plot_dir}umap/{self.name}/{self.name}_features({weights_str}, {create_save_str(concat, norm)}).png",
                         bbox_inches='tight', dpi=400)
 
@@ -560,7 +606,7 @@ class BBBC021Protocol(ValidationProcedure):
                 feature vectors.
         NOTE: Time for feature extraction is recorded.
     """
-    def __init__(self, dset):
+    def __init__(self, dset, suffix=''):
         self.data_dir = f"{data_dir}bbbc021"
         self.metadata = self.load_metadata()
         self.name = 'bbbc021'
@@ -569,6 +615,7 @@ class BBBC021Protocol(ValidationProcedure):
         self.len_dataset = len(self.path_gens[0])
         self.k_values = (1,)
         self.dset = dset
+        self.cytoimagenet_weights_suffix = suffix
 
     def load_metadata(self) -> pd.DataFrame:
         """Return metadata dataframe for BBBC021.
@@ -597,7 +644,8 @@ class BBBC021Protocol(ValidationProcedure):
     # Modified kNN for Not-Same-Compound (NSC) MOA classification
     def knn_classify(self, df_activations, unproc_labels: np.array, compounds: np.array,
                      k: int, metric='cosine', method="nsc",
-                     weights: str = 'imagenet', concat=True, norm=True):
+                     weights: str = 'imagenet', concat=True, norm=True,
+                     overwrite=False):
         """Perform <k> Nearest Neighbors Classification of each sample, using
         activations in <df_activations>, and labels in <unproc_labels>.
 
@@ -607,6 +655,13 @@ class BBBC021Protocol(ValidationProcedure):
         ==Parameters==:
             - df_activations is array of (num_samples, num_features)
         """
+        weights_str = check_weights_str(weights, self.cytoimagenet_weights_suffix)
+
+        # End early if results already exist
+        if not overwrite and os.path.exists(f"{evaluation_dir}/{weights_str}_results/"
+                                            f"{self.name}_kNN_results({weights_str}, "
+                                            f"{create_save_str(concat, norm)}, k-{k}).csv"):
+            return
         # Enforce precondition
         assert len(df_activations) == len(unproc_labels)
         if type(df_activations) == np.ndarray:
@@ -624,7 +679,8 @@ class BBBC021Protocol(ValidationProcedure):
         total = 0.0
 
         # Fit KNN Classifier on the entire dataset
-        knn_model = KNeighborsClassifier(n_neighbors=k, metric=metric)
+        knn_model = KNeighborsClassifier(n_neighbors=k, metric=metric,
+                                         algorithm='brute')
         knn_model.fit(df_activations, labels)
 
         # Iterate through each sample. Match to existing samples.
@@ -688,7 +744,9 @@ class BBBC021Protocol(ValidationProcedure):
         df_results['accuracy_by_class'] = correct_by_class / total_by_class
         df_results['total_accuracy'] = correct / total
 
-        weights_str = check_weights_str(weights)
+        if not os.path.exists(f"{evaluation_dir}/{weights_str}_results"):
+            os.mkdir(f"{evaluation_dir}/{weights_str}_results")
+
         df_results.to_csv(f"{evaluation_dir}/{weights_str}_results/{self.name}_kNN_results({weights_str}, {create_save_str(concat, norm)}, k-{k}).csv", index=False)
 
     # MAIN FUNCTION
@@ -728,19 +786,21 @@ class COOS7Validation(ValidationProcedure):
         test: one of 'test1', test2', 'test3', 'test4'. Specifies which test set
                 to use.
     """
-    def __init__(self, dset, test):
+    def __init__(self, dset, test, suffix=''):
         self.data_dir = f'/neuhaus/alexlu/datasets/IMAGE_DATASETS/COOS-MOUSE_david-andrews/CURATED-COOS7/{test}'
         self.metadata = self.load_metadata()
         self.test_set = test
         self.name = f'coos7_{test}'
-        self.num_channels = 3
+        self.num_channels = 2
         self.path_gens = self.create_path_iterators()
         self.len_dataset = len(self.path_gens[0])
-        self.k_values = (11,)
+        self.k_values = (1, 11,)
         self.dset = dset
 
+        self.cytoimagenet_weights_suffix = suffix
+
     def load_metadata(self) -> pd.DataFrame:
-        """Return metadata dataframe for COOS-7.
+        """Return metadata dataframe for COOS-7 based on directory structure..
         """
         files = glob.glob(os.sep.join([self.data_dir, '*']))
         # Get labels
@@ -776,16 +836,41 @@ class COOS7Validation(ValidationProcedure):
             path_gens.append(self.metadata[channel].tolist())
         return path_gens
 
+    def evaluate(self, weights, concat, norm, overwrite=False):
+        """Main function to carry out evaluation protocol.
+        If overwrite, ignore existing embeddings and extract.
+        """
+        df_activations = self.load_activations(concat, norm, weights, overwrite=overwrite)
+
+        # Get list of MOA for each treatment
+        labels = self.metadata['label'].to_numpy()
+
+        # kNN Classifier
+        for k in self.k_values:
+            self.knn_classify(df_activations, labels, k, concat=concat,
+                              norm=norm, weights=weights)
+
+        # Create UMAP visualization of features
+        self.umap_visualize(df_activations, labels=labels, weights=weights,
+                            concat=concat, norm=norm, save=True)
+
 
 class CyCLOPSValidation(ValidationProcedure):
     """Yeast Perturbation Dataset Evaluation."""
-    def __init__(self, dset):
+    def __init__(self, dset, suffix=''):
         self.data_dir = f'/neuhaus/alexlu/datasets/IMAGE_DATASETS/YEAST-PERTURBATION_yolanda-chong/chong_labeled'
         self.metadata = self.load_metadata()
+        self.name = 'cyclops'
+        self.num_channels = 2
+        self.path_gens = self.create_path_iterators()
+        self.len_dataset = len(self.path_gens[0])
+        self.k_values = (1, 11)
         self.dset = dset
 
+        self.cytoimagenet_weights_suffix = suffix
+
     def load_metadata(self) -> pd.DataFrame:
-        """Return metadata dataframe for BBBC021.
+        """Return metadata dataframe for CyCLOPS based on directory structure.
         """
         files = glob.glob(os.sep.join([self.data_dir, '*']))
         # Get labels
@@ -819,19 +904,112 @@ class CyCLOPSValidation(ValidationProcedure):
             path_gens.append(self.metadata[channel].tolist())
         return path_gens
 
+    def evaluate(self, weights, concat, norm, overwrite=False):
+        """Main function to carry out evaluation protocol.
+        If overwrite, ignore existing embeddings and extract.
+        """
+        df_activations = self.load_activations(concat, norm, weights, overwrite=overwrite)
 
-if __name__ == "__main__" and "D:\\" not in os.getcwd():
+        # Get list of MOA for each treatment
+        labels = self.metadata['label'].to_numpy()
+
+        # kNN Classifier
+        for k in self.k_values:
+            self.knn_classify(df_activations, labels, k, concat=concat,
+                              norm=norm, weights=weights)
+
+        # Create UMAP visualization of features
+        self.umap_visualize(df_activations, labels=labels, weights=weights,
+                            concat=concat, norm=norm, save=True)
+
+
+def main_coos(cyto_suffix=''):
+    dset = 'full'
+
+    for i in range(1, 5):
+        start = datetime.datetime.now()
+        protocol = COOS7Validation(dset, test=f"test{i}")
+        protocol.cytoimagenet_weights_suffix = cyto_suffix
+        print("=" * 30)
+        print(f"COOS-7 Test Set {i} Processing...")
+        print("=" * 30)
+        for weights in ['cytoimagenet']:
+            for concat in [True, False]:
+                for norm in [True, False]:
+                    suffix = f" ({check_weights_str(weights)}, {create_save_str(concat, norm)})"
+                    print(f"Processing kNN predictions for {protocol.name.upper()} w/{suffix}...")
+                    protocol.evaluate(weights=weights, concat=concat, norm=norm)
+            # Get final results
+            protocol.get_all_results(weights)
+            print(f"Done with {check_weights_str(weights)}!")
+        end = datetime.datetime.now()
+        total = timer(start, end)
+        print(f"COOS-7 Test Set {i} finished in {round(total, 2)} minutes..")
+
+    # Create plot comparing ImageNet, CytoImageNet and Random features
+    protocol.plot_all_results()
+
+
+def main_cyclops(cyto_suffix=''):
     # ==PARAMETERS==
     dset = 'full'
 
-    protocol = BBBC021Protocol(dset)
-
+    start = datetime.datetime.now()
+    protocol = CyCLOPSValidation(dset)
+    protocol.cytoimagenet_weights_suffix = cyto_suffix
+    print("=" * 30)
+    print(f"CyCLOPS Processing...")
+    print("=" * 30)
     for weights in ['cytoimagenet']:
         for concat in [True, False]:
             for norm in [True, False]:
+                suffix = f" ({check_weights_str(weights)}, {create_save_str(concat, norm)})"
+                print(f"Processing kNN predictions for {protocol.name.upper()} w/{suffix}...")
                 protocol.evaluate(weights=weights, concat=concat, norm=norm)
         # Get final results
         protocol.get_all_results(weights)
-        protocol.plot_all_results()
         print(f"Done with {check_weights_str(weights)}!")
+    end = datetime.datetime.now()
+    total = timer(start, end)
+    print(f"CyCLOPS finished in {round(total, 2)} minutes..")
 
+    # Create plot comparing ImageNet, CytoImageNet and Random features
+    protocol.plot_all_results()
+
+
+def main_bbbc021(cyto_suffix=''):
+    # ==PARAMETERS==
+    dset = 'full'
+
+    start = datetime.datetime.now()
+    protocol = BBBC021Protocol(dset)
+    protocol.cytoimagenet_weights_suffix = cyto_suffix
+    print("=" * 30)
+    print(f"BBBC021 Processing...")
+    print("=" * 30)
+    for weights in ['cytoimagenet']:
+        for concat in [True, False]:
+            for norm in [True, False]:
+                suffix = f" ({check_weights_str(weights)}, {create_save_str(concat, norm)})"
+                print(f"Processing kNN predictions for {protocol.name.upper()} w/{suffix}...")
+                protocol.evaluate(weights=weights, concat=concat, norm=norm)
+        # Get final results
+        protocol.get_all_results(weights)
+        print(f"Done with {check_weights_str(weights)}!")
+    end = datetime.datetime.now()
+    total = timer(start, end)
+    print(f"BBBC021 finished in {round(total, 2)} minutes..")
+
+    # Create plot comparing ImageNet, CytoImageNet and Random features
+    protocol.plot_all_results()
+
+
+if __name__ == "__main__" and "D:\\" not in os.getcwd():
+    # Weights after 100 epochs on the full 894 class dataset
+    weights_full_overfit = 'efficientnetb0_from_random(lr_0001_bs_64_epochs_100).h5'
+    # Weights after 16 epochs on the full 894 class dataset
+    weights_full_underfit = 'efficientnetb0_from_random-epoch_16.h5'
+
+    main_coos('full-16_epochs')
+    main_cyclops('full-16_epochs')
+    main_bbbc021('_full-16_epochs')

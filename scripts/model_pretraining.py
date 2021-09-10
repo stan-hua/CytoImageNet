@@ -33,6 +33,18 @@ print(tf.config.list_physical_devices('GPU'))
 # mixed_precision.set_policy(policy)
 
 
+def get_diverse_labels():
+    """Return list of labels whose mean pairwise INTER cosine distance is
+    greater than 0.8.
+
+    NOTE: This removes 341 labels. Most of which are Recursion compound labels.
+    """
+    df_diversity = pd.read_csv(f'{model_dir}similarity/full_diversity(cytoimagenet).csv')
+    # Apply threshold
+    df_diversity = df_diversity[df_diversity.inter_cos_distance_MEAN > 0.8]
+    return df_diversity.label.tolist()
+
+
 def load_dataset(batch_size: int = 64, split=False, labels=None):
     """Return tuple of (training, validation) data iterators, constructed from
     directory structure at 'ferrero/cytoimagenet/'
@@ -53,7 +65,9 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
     if labels is None:
         # If train-val split
         if split:
-            datagen = ImageDataGenerator(validation_split=0.1)
+            datagen = ImageDataGenerator(validation_split=0.1,
+                                         rotation_range=360,
+                                         fill_mode='reflect')
             train_generator = datagen.flow_from_directory(
                 directory=cyto_dir,
                 batch_size=batch_size,
@@ -76,7 +90,7 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
             )
             return train_generator, val_generator
         # If don't use train-val split
-        datagen = ImageDataGenerator()
+        datagen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
         train_generator = datagen.flow_from_directory(
             directory=cyto_dir,
             batch_size=batch_size,
@@ -87,6 +101,10 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
             seed=728565
         )
         return train_generator, None
+    elif labels == 'toy_20':
+        labels = toy_20
+    elif labels == 'toy_50':
+        labels = toy_50
 
     # If classes specified, use metadata to create image generators
     df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
@@ -96,7 +114,7 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
     if split:   # if train-val split
         df_train, df_val = train_test_split(df, test_size=0.1, random_state=0,
                                             stratify=df['label'])
-        train_gen = ImageDataGenerator()
+        train_gen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
         train_generator = train_gen.flow_from_dataframe(
             dataframe=df_train,
             directory=None,
@@ -119,13 +137,12 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
             target_size=(224, 224),
             interpolation="bilinear",
             color_mode="rgb",
-            shuffle=True,
             seed=728565
         )
         return train_generator, val_generator
 
     # If no train-val split
-    datagen = ImageDataGenerator()
+    datagen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
     train_generator = datagen.flow_from_dataframe(
         dataframe=df,
         directory=None,
@@ -238,13 +255,13 @@ def plot_loss(history, weight, dset: str = "toy", split=False):
 def main():
     global toy_50, toy_20
     # Dataset Parameters
-    num_classes = 894
     split = True
-    classes = None              # None or 'toy_20' or 'toy_50'
-    dset = "full"               # plot label, 'full' or 'toy20' or 'toy50'
-    save_weights_suffix = '(lr_0001_bs_64_epochs_50)'
+    classes = get_diverse_labels()              # None or 'toy_20' or 'toy_50'
+    num_classes = len(classes)
+    dset = "full_filtered"      # plot label, 'full' or 'toy20' or 'toy50'
+    save_weights_suffix = '(lr_0001_bs_64_epochs_100)'
 
-    # Parameters
+    # Hyper-parameters
     batch_size = 64
     num_epochs = 100
     learn_rate = 0.001

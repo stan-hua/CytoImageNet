@@ -249,7 +249,6 @@ def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False
         name: save figure as <name>.png
     """
     plt.figure()
-    # try:
     ax = sns.scatterplot(x=embeds[:, 0], y=embeds[:, 1],
                          hue=labels,
                          legend="full",
@@ -257,12 +256,6 @@ def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False
                          palette="tab20",
                          s=3,
                          linewidth=0)
-    # except:
-    #     print(name)
-    #     print("Embed Array Shape: ", embeds.shape)
-    #     print("Num Labels: ", len(labels))
-    #     raise Exception
-
     plt.legend(bbox_to_anchor=(1, 1), loc="upper left")
     plt.xlabel("")
     plt.ylabel("")

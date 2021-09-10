@@ -17,9 +17,10 @@ from sklearn.decomposition import PCA
 from itertools import combinations
 import datetime
 import multiprocessing
-import os
 import random
+import os
 import glob
+import sys
 
 import cv2
 import seaborn as sns
@@ -30,24 +31,30 @@ import matplotlib.pyplot as plt
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
+# Global Variables
+if "D:\\" in os.getcwd():
+    annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
+    data_dir = 'M:/ferrero/stan_data/'
+    evaluation_dir = "M:/home/stan/cytoimagenet/evaluation/"
+    model_dir = "M:/home/stan/cytoimagenet/model/"
+    scripts_dir = "M:/home/stan/cytoimagenet/scripts"
+    weights_dir = 'M:/home/stan/cytoimagenet/model/cytoimagenet-weights/'
+    plot_dir = "M:/home/stan/cytoimagenet/figures/"
+else:
+    annotations_dir = "/home/stan/cytoimagenet/annotations/"
+    data_dir = '/ferrero/stan_data/'
+    evaluation_dir = "/home/stan/cytoimagenet/evaluation/"
+    model_dir = "/home/stan/cytoimagenet/model/"
+    scripts_dir = '/home/stan/cytoimagenet/scripts'
+    weights_dir = '/home/stan/cytoimagenet/model/cytoimagenet-weights/'
+    plot_dir = "/home/stan/cytoimagenet/figures/"
+
+sys.path.append(f"{scripts_dir}/data_curation")
+from analyze_metadata import get_df_counts
+
 # Plot Settings
 sns.set_style("dark")
 plt.style.use('dark_background')
-
-
-# Global Variables
-if "D:\\" not in os.getcwd():
-    annotations_dir = "/home/stan/cytoimagenet/annotations/"
-    data_dir = '/ferrero/stan_data/'
-    model_dir = "/home/stan/cytoimagenet/model/"
-    plot_dir = "/home/stan/cytoimagenet/figures/"
-    cyto_dir = '/ferrero/cytoimagenet/'
-else:
-    annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
-    data_dir = 'M:/ferrero/stan_data/'
-    model_dir = "M:/home/stan/cytoimagenet/model/"
-    plot_dir = "M:/home/stan/cytoimagenet/figures/"
-    cyto_dir = 'M:/ferrero/cytoimagenet/'
 
 # Labels
 toy_50 = ['104-001', 'actin', 'actin inhibitor', 'active sars-cov-2',
@@ -77,6 +84,8 @@ toy_20 = ['actin', 'cell body', 'cell membrane', 'dmso', 'human', 'kinase',
 
 
 def timer(start, end):
+    """Returns the minutes it took to run a piece of code given the start time
+    and end time."""
     time_delta = (end - start)
     total_seconds = time_delta.total_seconds()
     minutes = total_seconds/60
@@ -84,12 +93,16 @@ def timer(start, end):
     return minutes
 
 
+# DATA GENERATOR for NON-CytoImageNet Images
 def test_datagen(label: str, label_dir, data_subset="train"):
-    """Return dataframe compatible with ImageDataGenerator.flow_from_dataframe
-    from tensorflow keras.
+    """Return dataframe of paths compatible with tensorflow keras'
+    ImageDataGenerator.flow_from_dataframe()
 
-    Since API is only compatible with jpg, png and gif files. Check that all files
+    If <data_subset> is 'val', return path generator for classes not in
+    CytoImageNet. Note that these classes were rejected, but images can come
+    from datasets present in CytoImageNet.
 
+    NOTE: This function is used to load images that are not in CytoImageNet.
     """
     if data_subset != 'val':
         if label == 'toy_20':      # use labels from toy_20, not upsampled
@@ -112,7 +125,7 @@ def test_datagen(label: str, label_dir, data_subset="train"):
 
 
 def load_img(x):
-    """Load image using Open-CV. Resize to 224, 224"""
+    """Load image using Open-CV. Resize to (224, 224)"""
     img = cv2.imread(x)
     if img is None:
         return
@@ -178,7 +191,7 @@ def extract_all_embeds(model, label: str, directory: str = "imagenet-activations
     return activations
 
 
-# DATA GENERATOR
+# DATA GENERATOR for CytoImageNet Images
 def load_dataset(dset: str = 'full'):
     """Return tuple of (training data iterator, labels). Sampling 100 from all
     classes in CytoImageNet
@@ -240,8 +253,7 @@ def extract_embeds_from_sample(dset, weights='cytoimagenet'):
     # Number of Steps till done Predicting
     steps_to_predict = ceil(datagen.n / datagen.batch_size)
     print("Beginning feature extraction...")
-    embeds = model.predict(ds_test, steps=steps_to_predict,
-                           use_multiprocessing=True, workers=32, verbose=1)
+    embeds = model.predict(ds_test, steps=steps_to_predict, workers=32, verbose=1)
     print("Done extracting!")
     sampled_embeds = pd.DataFrame(embeds)
 
@@ -255,6 +267,10 @@ def extract_embeds_from_sample(dset, weights='cytoimagenet'):
 
 # SIMILARITY METRICS
 class DiversityMetric:
+    def __init__(self, dset, weights):
+        self.dset = dset
+        self.weights = weights
+
     def cosine_similarity(self, img1_img2: tuple) -> float:
         """Return cosine similarity between image features of <img1_img2>[0] and
         <img1_img2>[1].
@@ -300,7 +316,7 @@ class DiversityMetric:
             cos_sims.append(self.cosine_similarity((random.choice(label_features), random.choice(other_features))))
         return cos_sims
 
-    def calculate_diversity(self, label: str, dset='toy_20', plot=False):
+    def calculate_diversity(self, label: str, plot=False):
         """Calculate inter-class diversity and intra-class diversity using pairwise
         cosine similarity. Return mean and SD for inter and intra-class diversity.
 
@@ -310,11 +326,14 @@ class DiversityMetric:
         global model_dir
 
         # Verify that embeddings for samples of the full dataset exists
-        if not os.path.exists(f"{model_dir}/imagenet-activations/{dset}_dset_embeddings.h5"):
-            extract_embeds_from_sample(dset)
-
-        df_embeds = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/{dset}_dset_embeddings.h5", 'embed')
-        labels = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/{dset}_dset_embeddings.h5", 'label')
+        # if not os.path.exists(f"{model_dir}/{self.weights}-activations/{self.dset}_dset_embeddings.h5"):
+        #     extract_embeds_from_sample(self.dset, weights=self.weights)
+        if self.weights == 'cytoimagenet':
+            suffix = '(16_epochs)'
+        else:
+            suffix = ''
+        df_embeds = pd.read_hdf(f"{model_dir}/{self.weights}-activations/{self.dset}_dset_embeddings{suffix}.h5", 'embed')
+        labels = pd.read_hdf(f"{model_dir}/{self.weights}-activations/{self.dset}_dset_embeddings{suffix}.h5", 'label')
         df_embeds['label'] = labels
 
         # ==INTRA DIVERSITY==:
@@ -335,21 +354,21 @@ class DiversityMetric:
             ax1.set_xlim(-0.05, 1)
             ax2.set_xlabel("")
             ax2.set_xlim(-0.05, 1)
-            plt.savefig(f"{plot_dir}classes/similarity/{label}_diversity({dset}).png")
+            plt.savefig(f"{plot_dir}classes/similarity/{label}_diversity({self.dset}).png")
             plt.close(fig)
 
         return (np.mean(intra_similarities), np.std(intra_similarities)), (np.mean(inter_similarities), np.std(inter_similarities))
 
-    def get_div(self, label, dset='toy_20'):
+    def get_div(self, label):
         """Return pd.DataFrame containing diversity metrics for <label>."""
-        (intra_mean, intra_sd), (inter_mean, inter_sd) = self.calculate_diversity(label, dset=dset)
+        (intra_mean, intra_sd), (inter_mean, inter_sd) = self.calculate_diversity(label)
         curr_div = pd.DataFrame({"label": label, "intra_cos_distance_MEAN": 1-intra_mean,
                                  "intra_SD": intra_sd, "inter_cos_distance_MEAN": 1-inter_mean,
                                  "inter_SD": inter_sd}, index=[0])
 
         return curr_div
 
-    def get_all_diversity(self, dset='full', kind=''):
+    def get_all_diversity(self, kind=''):
         """Save dataframe of summary stats for pairwise cosine similarities for
         all 894 CytoImageNet labels.
             - mean and std of INTRA-label pairwise cosine similarities
@@ -358,9 +377,9 @@ class DiversityMetric:
         global toy_50, toy_20
         df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
 
-        if dset == 'toy_50':
+        if self.dset == 'toy_50':
             df_metadata = df_metadata[df_metadata.label.isin(toy_50)]
-        elif dset == 'toy_20':
+        elif self.dset == 'toy_20':
             df_metadata = df_metadata[df_metadata.label.isin(toy_20)]
         # try:
         #     pool = multiprocessing.Pool(16)
@@ -373,14 +392,39 @@ class DiversityMetric:
         accum_div = []
         for label in df_metadata.label.unique().tolist():
             try:
-                accum_div.append(self.get_div(label, dset=dset))
+                accum_div.append(self.get_div(label))
             except:
                 print(label, ' errored!')
 
         df_diversity = pd.concat(accum_div, ignore_index=True)
-        df_diversity.to_csv(f'{model_dir}similarity/{kind}{dset}_diversity.csv', index=False)
+        df_diversity.to_csv(f'{model_dir}similarity/{kind}{self.dset}_diversity({self.weights}).csv', index=False)
 
         return df_diversity
+
+    def plot_all_diversity(self, kind=''):
+        """Plot intra cosine distance vs. inter cosine distance for all classes
+        in CytoImageNet"""
+        if os.path.exists(f'{model_dir}similarity/{kind}{self.dset}_diversity({self.weights}).csv'):
+            df_diversity = pd.read_csv(f'{model_dir}similarity/{kind}{self.dset}_diversity({self.weights}).csv')
+        else:
+            df_diversity = self.get_all_diversity()
+
+        # Get Category Label
+        df_counts = get_df_counts()
+        mapping_label = dict(zip(df_counts.label, df_counts.category))
+        df_diversity['category'] = df_diversity.label.map(lambda x: mapping_label[x])
+
+        fig, ax = plt.subplots()
+        sns.scatterplot(x='intra_cos_distance_MEAN',
+                        y='inter_cos_distance_MEAN',
+                        hue='category', data=df_diversity, legend="full",
+                        alpha=1, palette="tab20", s=2, linewidth=0, ax=ax)
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+        plt.xlabel('Mean Intra Cosine Distance')
+        plt.ylabel('Mean Inter Cosine Distance')
+        plt.title(f'{self.weights.capitalize()} Features')
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}classes/{self.dset}_similarity({self.weights}).png")
 
 
 def main():
@@ -438,7 +482,14 @@ def main():
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     dset = 'full'
-    # extract_embeds_from_sample(dset, weights='cytoimagenet')
+    for weights in ['cytoimagenet']:
+        div_metrics = DiversityMetric(dset=dset, weights=weights)
+        # div_metrics.get_all_diversity()
+        div_metrics.plot_all_diversity()
+else:
+    # Get label -> database mapping
+    df_metadata = pd.read_csv('M:/ferrero/cytoimagenet/metadata.csv')
+    to_database = df_metadata.groupby(by=['label']).apply(lambda x: tuple(sorted(x['database'].unique()))).reset_index()
+    label_mapping_database = dict(zip(to_database.iloc[:, 0].tolist(), to_database.iloc[:, 1]))
 
-    div_metrics = DiversityMetric()
-    div_metrics.get_all_diversity(dset=dset)
+    # df_diversity['database'] = df_diversity.label.map(lambda x: label_mapping_database[x])

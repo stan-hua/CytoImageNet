@@ -63,6 +63,8 @@ def get_df_counts() -> pd.DataFrame:
             df_counts.drop(idx_dup[idx_dup].index, inplace=True)
     # [print(df_counts[df_counts.label == i]) for i in idx[idx].index.tolist()]
 
+    df_counts['label'] = df_counts.label.map(lambda x: x if ' -- ' not in x else x.replace(' -- ', '-'))
+
     return df_counts
 
 
