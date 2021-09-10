@@ -56,7 +56,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 > * **scaling**: Length of crop side relative to size of original image (e.g. 0.5 corresponds to a 0.5 by 0.5 window ~ 1/4 the original image)
 > * **x_min, x_max, y_min, y_max**: Slicing indices to create crop from original image
 
-**NOTE**: In the case of multi-labels, labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
+**NOTE**: In the case of multi-labels in each category, possible labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
 
 **EXTRA NOTE**: All labels were converted to lowercase, which may make searching labels difficult, particularly with compound labels.
 
