@@ -49,7 +49,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 > * **phenotype**: May refer to disease condition (e.g. leukemia), mechanism-of-action (MOA), cell cycle stage (e.g. telophase), etc.
 > * **compound**: Name of compound treatment
 > * **sirna**: Name of siRNA treatment
-> * **gene**: Name of gene targeted (*" targeted" added to avoid overlapping labels with cell_visible*)
+> * **gene**: Name of gene (or protein) targeted (*" targeted" added to avoid overlapping labels with cell_visible*)
 
 > * **microscopy**: Microscopy modality (e.g. fluorescence)
 > * **crop**: True if image is a crop from an image. False, otherwise.
