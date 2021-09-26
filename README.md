@@ -1,5 +1,5 @@
 # CytoImageNet
-A pretraining dataset for bioimage transfer learning. 
+A large-scale pretraining dataset for bioimage transfer learning. 
 
 ![cytoimagenet_plot](https://user-images.githubusercontent.com/63123494/131281187-37ef3142-90bb-482e-a37f-4484a7d8f003.png)
 
@@ -40,7 +40,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 > * **name**: Name of source dataset (*created if no explicit name in database*)
 > * **dir_name**: Shorthand naming convention of dataset (*created if no explicit shorthand in database*)
 > * **path**: Relative path to folder containing image file. (e.g. /cytoimagenet/human)
-> * **filename**: Standardized filename based on binary of image number in class (e.g. human-00001011)
+> * **filename**: Standardized filename based on binary of image number in class (e.g. human-00001011.png)
 > * **idx**: Index that maps to original image from source dataset. (e.g. bbbbc041-14631)
 
 > * **organism**: Biological organism (e.g. human)
@@ -49,14 +49,14 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 > * **phenotype**: May refer to disease condition (e.g. leukemia), mechanism-of-action (MOA), cell cycle stage (e.g. telophase), etc.
 > * **compound**: Name of compound treatment
 > * **sirna**: Name of siRNA treatment
-> * **gene**: Name of gene targeted (*" targeted" added to avoid overlapping labels with cell_visible*)
+> * **gene**: Name of gene (or protein) targeted (*" targeted" added to avoid overlapping labels with cell_visible*)
 
 > * **microscopy**: Microscopy modality (e.g. fluorescence)
 > * **crop**: True if image is a crop from an image. False, otherwise.
 > * **scaling**: Length of crop side relative to size of original image (e.g. 0.5 corresponds to a 0.5 by 0.5 window ~ 1/4 the original image)
 > * **x_min, x_max, y_min, y_max**: Slicing indices to create crop from original image
 
-**NOTE**: In the case of multi-labels, labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
+**NOTE**: In the case of multi-labels in each category, possible labels are separated by a "|" (e.g. nucleus|actin|mitochondria).
 
 **EXTRA NOTE**: All labels were converted to lowercase, which may make searching labels difficult, particularly with compound labels.
 
