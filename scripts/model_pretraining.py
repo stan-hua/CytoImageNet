@@ -26,28 +26,48 @@ cyto_dir = '/ferrero/cytoimagenet/'
 # List GPU
 print(tf.config.list_physical_devices('GPU'))
 
-
 # Use Mixed Precision
 # from tensorflow.keras.mixed_precision import experimental as mixed_precision
 # policy = mixed_precision.Policy('mixed_float16')
 # mixed_precision.set_policy(policy)
 
+# ==Label-related Helper Functions==:
+def dirlabel_to_label(labels):
+    """HELPER FUNCTION. Converts directory labels to original labels if
+    possible."""
+    df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    fixed_labels = []
+    present_labels = df.label.unique()
+    for label in labels:
+        if label in present_labels:
+            fixed_labels.append(label)
+        else:
+            fixed_labels.append(
+                df[df.filename.str.contains(label)].iloc[0].label)
+    return fixed_labels
 
-def get_diverse_labels():
-    """Return list of labels whose mean pairwise INTER cosine distance is
-    greater than 0.8.
+
+def get_labels(diverse: bool = False):
+    """If not <diverse>, return list of all labels.
+
+    If <diverse>, return list of labels whose mean pairwise INTER cosine
+    distance is greater than 0.8.
 
     NOTE: This removes 341 labels. Most of which are Recursion compound labels.
     """
-    df_diversity = pd.read_csv(f'{model_dir}similarity/full_diversity(cytoimagenet).csv')
-    # Apply threshold
-    df_diversity = df_diversity[df_diversity.inter_cos_distance_MEAN > 0.8]
-    return df_diversity.label.tolist()
+    if not diverse:
+        df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
+    else:
+        df_diversity = pd.read_csv(f'{model_dir}similarity/full_diversity(cytoimagenet).csv')
+        # Apply threshold
+        df_diversity = df_diversity[df_diversity.inter_cos_distance_MEAN > 0.8]
+        return df_diversity.label.tolist()
 
 
+# ==Data Loading==:
 def load_dataset(batch_size: int = 64, split=False, labels=None):
     """Return tuple of (training, validation) data iterators, constructed from
-    directory structure at 'ferrero/cytoimagenet/'
+    metadata.
 
     With following fixed parameters:
         - target size: (224, 224)
@@ -59,12 +79,9 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
     TODO: Try Augmentations
     # brightness_range=[0.6, 0.9]
     # zoom_range=[0.5, 1.5]
-    # rotation_range = 30
     """
-    # If classes not specified, use directory structure to create labels
     if labels is None:
-        # If train-val split
-        if split:
+        if split:  # If train-val split
             datagen = ImageDataGenerator(validation_split=0.1,
                                          rotation_range=360,
                                          fill_mode='reflect')
@@ -89,24 +106,26 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
                 subset="validation"
             )
             return train_generator, val_generator
-        # If don't use train-val split
-        datagen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
-        train_generator = datagen.flow_from_directory(
-            directory=cyto_dir,
-            batch_size=batch_size,
-            target_size=(224, 224),
-            interpolation="bilinear",
-            color_mode="rgb",
-            shuffle=True,
-            seed=728565
-        )
+        else: # If don't use train-val split
+            datagen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
+            train_generator = datagen.flow_from_directory(
+                directory=cyto_dir,
+                batch_size=batch_size,
+                target_size=(224, 224),
+                interpolation="bilinear",
+                color_mode="rgb",
+                shuffle=True,
+                seed=728565
+            )
         return train_generator, None
+
+    # Specify to use predefined labels.
     elif labels == 'toy_20':
         labels = toy_20
     elif labels == 'toy_50':
         labels = toy_50
 
-    # If classes specified, use metadata to create image generators
+    # Use metadata to create generators of image batches
     df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
     df = df[df.label.isin(labels)]
     df['full_path'] = df.apply(lambda x: x.path + "/" + x.filename, axis=1)
@@ -114,7 +133,10 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
     if split:   # if train-val split
         df_train, df_val = train_test_split(df, test_size=0.1, random_state=0,
                                             stratify=df['label'])
-        train_gen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
+        train_gen = ImageDataGenerator(
+            rotation_range=360, fill_mode='reflect',
+            horizontal_flip=True,
+        )
         train_generator = train_gen.flow_from_dataframe(
             dataframe=df_train,
             directory=None,
@@ -133,6 +155,7 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
             directory=None,
             x_col='full_path',
             y_col='label',
+            shuffle=False,
             batch_size=batch_size,
             target_size=(224, 224),
             interpolation="bilinear",
@@ -140,22 +163,24 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
             seed=728565
         )
         return train_generator, val_generator
-
-    # If no train-val split
-    datagen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
-    train_generator = datagen.flow_from_dataframe(
-        dataframe=df,
-        directory=None,
-        x_col='full_path',
-        y_col='label',
-        batch_size=batch_size,
-        target_size=(224, 224),
-        interpolation="bilinear",
-        color_mode="rgb",
-        shuffle=True,
-        seed=728565
-    )
-    return train_generator, None
+    else:
+        # If no train-val split
+        datagen = ImageDataGenerator(
+            rotation_range=360, fill_mode='reflect'
+        )
+        train_generator = datagen.flow_from_dataframe(
+            dataframe=df,
+            directory=None,
+            x_col='full_path',
+            y_col='label',
+            batch_size=batch_size,
+            target_size=(224, 224),
+            interpolation="bilinear",
+            color_mode="rgb",
+            shuffle=True,
+            seed=728565
+        )
+        return train_generator, None
 
 
 def get_dset_generators(split=False, num_classes=894, batch_size=64,
@@ -188,6 +213,7 @@ def get_dset_generators(split=False, num_classes=894, batch_size=64,
     return (ds_train, None), (steps_per_epoch_train, None)
 
 
+# ==Defining Model==:
 def create_model(num_classes: int, weights=None, pooling="avg"):
     """Construct tensorflow model."""
     if pooling == "max":
@@ -221,6 +247,7 @@ def create_model(num_classes: int, weights=None, pooling="avg"):
     return model
 
 
+# ==Plot==:
 def plot_loss(history, weight, dset: str = "toy", split=False):
     """Plot training and validation results over the number of epochs."""
     # Check if parent directory exists
@@ -252,20 +279,21 @@ def plot_loss(history, weight, dset: str = "toy", split=False):
         fig.savefig(f"{plot_dir}history (imagenet, {dset} dataset).png")
 
 
+# ==Model Training==:
 def main():
     global toy_50, toy_20
     # Dataset Parameters
     split = True
-    classes = get_diverse_labels()              # None or 'toy_20' or 'toy_50'
-    num_classes = len(classes)
-    dset = "full_filtered"      # plot label, 'full' or 'toy20' or 'toy50'
+    classes = None                  # None or 'toy_20' or 'toy_50' or get_diverse_labels()
+    num_classes = 894               # 894 or len(classes)
+    dset = "full"          # plot label, 'full' or 'toy20' or 'toy50'
     save_weights_suffix = '(lr_0001_bs_64_epochs_100)'
 
-    # Hyper-parameters
+    # Hyperparameters
     batch_size = 64
-    num_epochs = 100
+    num_epochs = 60
     learn_rate = 0.001
-    weights = None              # None or 'imagenet'
+    weights = None              # initialize from random or 'imagenet'
     pooling = "avg"             # 'avg' or 'max'
 
     # Get data generators
@@ -349,21 +377,6 @@ def main():
 
 
 if __name__ == "__main__":
-    def dirlabel_to_label(labels):
-        """HELPER FUNCTION. Converts directory labels to original labels if
-        possible."""
-        df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-        fixed_labels = []
-        present_labels = df.label.unique()
-        for label in labels:
-            if label in present_labels:
-                fixed_labels.append(label)
-            else:
-                fixed_labels.append(
-                    df[df.filename.str.contains(label)].iloc[0].label)
-        return fixed_labels
-
-
     toy_50 = ['104-001', 'actin', 'actin inhibitor', 'active sars-cov-2',
               'activin-a', 'alpha-adrenergic receptor agonist',
               'angiopoietin-1', 'atp-sensitive potassium channel blocker',

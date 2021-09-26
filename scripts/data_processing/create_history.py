@@ -1,7 +1,6 @@
 from scripts.data_processing.preprocessor import get_file_references
 
 import os
-import glob
 import json
 
 import pandas as pd

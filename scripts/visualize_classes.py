@@ -58,15 +58,19 @@ def check_label_files():
     return df
 
 
-def load_images_from_label(label: str):
+def load_images_from_label(label: str, num_imgs=25, df=None):
     """Return list of arrays (of images) for <label>.
     """
-    df = pd.read_csv(f"{annotations_dir}classes/{label}.csv")
+    df = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
+    # if df is None:
+    #     df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    # df = df[df.label == label]
+
     imgs = []
-    for i in df.sample(n=25).index:
+    for i in df.sample(n=num_imgs, random_state=1).index:
         try:
             im = Image.open(df.loc[i, "path"] + "/" + df.loc[i, "filename"])
-            imgs.append(np.array(im.resize((224, 224))))
+            imgs.append(np.array(im.resize((112, 112))))
         except:
             pass
     return imgs
@@ -101,7 +105,7 @@ def gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
         plt.tight_layout(pad=0)
 
     if save:
-        plt.savefig(f"{plot_dir}class_grid_show/{save_name}.png")
+        plt.savefig(f"{plot_dir}class_grid_show/cytoimagenet_classes/{save_name}.png")
 
 
 def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
@@ -120,7 +124,6 @@ def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plo
     # Convert from (num_imgs, H, W, channels) to (num_imgs, channels, H, W)
     img_stack = np.stack(used_imgs)
     rgb_stack = np.array([img_stack] * 3)
-    print(rgb_stack.shape)
     imgs_as_tensor = torch.from_numpy(rgb_stack).permute(1, 0, 2, 3)
     # Create grid of images
     grid_img = torchvision.utils.make_grid(imgs_as_tensor, nrow=nrows,
@@ -133,15 +136,16 @@ def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plo
     if fig_title is not None:
         plt.title(fig_title)
     if save:
-        plt.savefig(f"{plot_dir}class_grid_show/{save_name}.png", )
+        plt.savefig(f"{plot_dir}class_grid_show/cytoimagenet_classes/{save_name}.png")
 
 
-def plot_labels(labels):
+def plot_labels(labels, df_metadata=None):
     """Create and save gridplots for each label in <labels>.
     """
     for label in labels:
-        imgs = load_images_from_label(label)
-        if gridplot_images(imgs, fig_title=f"{label}", save=True) is None:
+        imgs = load_images_from_label(label, num_imgs=81, df=df_metadata)
+        if torch_gridplot_images(imgs, fig_title=label,
+                                 save_name=label+"_grid", save=True) is None:
             print("Success! for " + label)
         else:
             print("No images for " + label)
@@ -429,7 +433,20 @@ def main():
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # plot_cytoimagenet()
-    plot_toy20_umap(save=True)
+    # plot_toy20_umap(save=True)
+
+    # Get CytoImageNet-552 labels
+    # df_diversity = pd.read_csv(f'{model_dir}similarity/full_diversity(cytoimagenet).csv')
+    # labels_excluded = df_diversity[df_diversity.inter_cos_distance_MEAN <= 0.8].label.tolist()
+    #
+    # df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    # labels_894 = df.label.unique().tolist()
+
+    imgs = load_images_from_label('nucleus', num_imgs=81, df=None)
+    torch_gridplot_images(imgs, fig_title='nucleus', save_name='nucleus_updated'+"_grid", save=True)
+
+    # plot_labels(labels_894, df_metadata=df)
+
 elif "D:\\" in os.getcwd():
     pass
     # plot_umap_by('resolution', "upsampled", True)
