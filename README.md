@@ -197,7 +197,13 @@ Notably, our model only achieved 13.42% accuracy on the training set and 11.32% 
 
 ## Sources of Data
 
-![database_composition](https://user-images.githubusercontent.com/63123494/130711398-fcd9d10b-9162-4284-b294-76be30b8a61b.png)
+**Database**|**Number of Labels Contributed**
+-----|-----
+Recursion|651
+Image Data Resource|450
+Broad Bioimage Benchmark Collection|202
+Kaggle|27
+Cell Image Library|1
 
 CytoImageNet image data comes from the open-source datasets listed below.
 > **NOTE**: If dataset name is too long (e.g. name of source publication), a shorter name is given.
