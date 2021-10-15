@@ -110,7 +110,7 @@ In general, there is no one-size-fits-all when it comes to microscopy images sin
 > **Merging Procedure**
 ![channel merging](https://user-images.githubusercontent.com/63123494/130717702-184e3b14-f4ad-4e27-b26b-a1d95e11c6e3.png)
 
-**RELEVANT CODE**: [`preprocessor.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/preprocessor.py), [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
+**RELEVANT CODE**: [`preprocessor.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_processing/preprocessor.py), [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_processing/prepare_dataset.py)
 
 ---
 
@@ -123,7 +123,7 @@ We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction m
 
 ![upsampling_effects](https://user-images.githubusercontent.com/63123494/130719806-e36fe929-f4b0-49de-b19d-3a5203e71851.png)
 
-**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py), [`feature_extraction.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/feature_extraction.py), [`visualize_classes.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/visualize_classes.py)
+**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_processing/prepare_dataset.py), [`feature_extraction.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/feature_extraction.py), [`visualize_classes.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/visualize_classes.py)
 
 ---
 
@@ -140,7 +140,7 @@ We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction m
 
 > **NOTE**: We have no guarantees for the quality of the data outside of these quality checks.
 
-**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/data_processing/prepare_dataset.py)
+**RELEVANT CODE**: [`prepare_dataset.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/data_processing/prepare_dataset.py)
 
 ---
 
@@ -149,7 +149,7 @@ Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional 
 
 Adam Optimizer was the chosen optimizer. Hyperparameters: learning rate, batch size and number of epochs were tuned on a smaller 50 class subset of CytoImageNet. 
 
-**RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_pretraining.py)
+**RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/model_pretraining.py)
 
 ## Evaluation (Transfer Tasks)
 We validate the performance of our CytoImageNet features on three classification-based transfer tasks: (1) **BBBC021 evaluation protocol** from the Broad Institute, (2) the **Cells Out of Sample (COOS-7)** dataset, and (3) the **CyCLOPS Wt2** dataset.
@@ -187,7 +187,7 @@ This dataset is composed of single cell images. The evaluation procedure is as f
 1. Extract image features (*each 'image' is made of **2** grayscale fluorescent microscopy images*)
 2. Using a kNN, classify the protein's localization given in one of 17 labels.
 
-**RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/12e43ae03e7a303974faa6803711063b21e402ca/scripts/model_evaluation.py)
+**RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/model_evaluation.py)
 
 ---
 
