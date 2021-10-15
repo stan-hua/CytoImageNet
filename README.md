@@ -14,7 +14,7 @@ Thus, a need for **automated methods to help analyze biological images** emerges
 Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals from microscopy images, in comparison to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
 
 ## About the data
-**890,217** total images. **894 classes** (~1000 images per class). 
+**890,737** total images. **894 classes** (~1000 images per class). 
 
 Microscopy images belong to **40 openly available datasets** from the following databases: Recursion, Image Data Resource, Broad Bioimage Benchmark Collection,
 Kaggle and the Cell Image Library. See below for the list of datasets included.
@@ -145,9 +145,8 @@ We extract **ImageNet features** and use **UMAPs** (a dimensionality reduction m
 ---
 
 ## Model Training
-Implemented in Tensorflow Keras, **EfficientNetB0** is the chosen convolutional neural network architecture to train on CytoImageNet. Its relatively small number of parameters favorably limits the amount of information that can be learnt, and it allows for faster training times.
 
-Adam Optimizer was the chosen optimizer. Hyperparameters: learning rate, batch size and number of epochs were tuned on a smaller 50 class subset of CytoImageNet. 
+CytoImageNet is split into a training and validation set with 10% used for validation. This yields roughly 900 training samples for each label. Images are fed in batches of 64 with random 0 to 360 degrees rotations. We train convolutional networks (EfficientNetB0) to classify one of the 894 labels, by minimizing the categorical cross-entropy loss of predictions to ground truth labels. Randomly-initialized models were trained for 24 epochs (2 weeks) on an NVIDIA Tesla K40C. The loss was optimized via the Adam optimizer with learning rate of 0.001
 
 **RELEVANT CODE**: [`model_pretraining.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/model_pretraining.py)
 
@@ -177,17 +176,22 @@ The procedure is as follows:
 4. Report accuracy, termed *'not-same-compound' **(NSC) accuracy***.
 
 ### COOS-7
-This dataset was originally designed to test the out-of-sample generalizability of trained classifiers. For each of the 4 test sets, the evaluation procedure is as follows:
+A dataset of single-cell mouse cells, COOS-7 was originally designed to test the out-of-sample generalizability of trained classifiers. For each of the 4 test sets, the evaluation procedure is as follows:
 1. Extract image features (*each 'image' is made of **2** grayscale fluorescent microscopy images*)
-2. Using a kNN, classify the protein's localization given in one of 7 labels.
+2. Using 11-nearest neighbors trained on features extracted from the training set, classify the protein's localization given in one of 7 labels.
 
 
 ### CyCLOPS
-This dataset is composed of single cell images. The evaluation procedure is as follows:
+This dataset is composed of single-cell images of yeast cells. The evaluation procedure is as follows:
 1. Extract image features (*each 'image' is made of **2** grayscale fluorescent microscopy images*)
-2. Using a kNN, classify the protein's localization given in one of 17 labels.
+2. Using 11-nearest neighbors, classify the protein's localization given in one of 17 labels.
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/model_evaluation.py)
+
+### Results
+
+Notably, our model only achieved 13.42% accuracy on the training set and 11.32% on the validation set. Yet, it produced features competitive to ImageNet. It is surprising that features pretrained on CytoImageNet don’t beat ImageNet-pretrained features. As Kornblith, Shlens and Le 2019 reported a strong correlation between ImageNet validation accuracy and transfer accuracy, it may be that we haven’t had the opportunity to optimize the model enough, and this may be explored in future work.
+
 
 ---
 
@@ -251,6 +255,6 @@ CytoImageNet image data comes from the open-source datasets listed below.
 ---
 
 ## Acknowledgements
-This project was supervised by Professor [Alan Moses](http://www.moseslab.csb.utoronto.ca/people/amoses/) and Dr. [Alex Lu](https://www.alexluresearch.com/), who are both experts in the field of representation learning for biological images and sequence data. Without their guidance, I would not have gotten this far. The project was funded by the University of Toronto CSB Undergraduate Research Award. 
+This project was supervised by Professor [Alan Moses](http://www.moseslab.csb.utoronto.ca/people/amoses/) and Dr. [Alex Lu](https://www.alexluresearch.com/), who are both experts in the field of representation learning for biological images and sequence data. The project was funded by the University of Toronto CSB Undergraduate Research Award. 
 
 Special thanks to Professor [Juan Caicedo](https://www.broadinstitute.org/bios/juan-c-caicedo) of the Broad Institute for his instruction on the BBBC021 evaluation protocol, and Professor [Anne Carpenter](https://www.broadinstitute.org/bios/anne-e-carpenter) for her help early on in understanding datasets in the Broad Bioimage Benchmark Collection.
