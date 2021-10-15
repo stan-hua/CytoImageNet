@@ -5,6 +5,7 @@ import pandas as pd
 
 from PIL import Image
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 import seaborn as sns
 import pylab
 
@@ -30,8 +31,9 @@ else:
     model_dir = "M:/home/stan/cytoimagenet/model/"
     plot_dir = "M:/home/stan/cytoimagenet/figures/"
 
-sns.set_style("dark")
-plt.style.use('dark_background')
+sns.set_style("white")
+# plt.style.use('dark_background')
+plt.rc('font', family='serif')
 
 
 def check_label_files():
@@ -61,10 +63,10 @@ def check_label_files():
 def load_images_from_label(label: str, num_imgs=25, df=None):
     """Return list of arrays (of images) for <label>.
     """
-    df = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
-    # if df is None:
-    #     df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-    # df = df[df.label == label]
+    # df = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
+    if df is None:
+        df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    df = df[df.label == label]
 
     imgs = []
     for i in df.sample(n=num_imgs, random_state=1).index:
@@ -77,35 +79,36 @@ def load_images_from_label(label: str, num_imgs=25, df=None):
 
 
 # GRIDPLOT
-def gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
+def gridplot_images(imgs: list, labels: list,
+                    save=False, fig_title=None, save_name='plot'):
     """Plot grid of images. Use only as many to create a perfectly filled in
-     square."""
-    num_imgs = len(imgs)
-    n_sqrt = floor(sqrt(num_imgs))
-    nrows, ncols = n_sqrt, n_sqrt  # array of sub-plots
-    figsize = [8, 10]     # figure size, inches
+     square.
+
+     ==Precondition==:
+        - imgs is a matrix, where each inner list consists of images from the
+        same label.
+     """
+    nrows, ncols = len(imgs), len(imgs[0])  # array of sub-plots
+    figsize = [2.5, 9]     # figure size, inches
 
     # Create subplots
-    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize,
-                           sharex=True, sharey=True)
-
+    fig, ax = plt.subplots(nrows=nrows, ncols=ncols,
+                           figsize=figsize)
+    fig.tight_layout(pad=0)
     # Plot image on each sub-plot
-    n = 0
-    for i, axi in enumerate(ax.flat):
-        axi.imshow(imgs[n], cmap="gray")
-        axi.set_axis_off()
-        axi.set_aspect('equal')
-        n += 1
+    for row in range(nrows):
+        for col in range(ncols):
+            ax[row][col].imshow(imgs[row][col], cmap="gray")
+            ax[row][col].set(xticklabels=[], yticklabels=[])
+
+            if col == 0:
+                ax[row][col].set_ylabel(labels[row], size=6)
 
     if fig_title is not None:
         fig.suptitle(fig_title)
 
-    # Remove space between subplots
-    for j in range(min(100, nrows*ncols)):
-        plt.tight_layout(pad=0)
-
     if save:
-        plt.savefig(f"{plot_dir}class_grid_show/cytoimagenet_classes/{save_name}.png")
+        plt.savefig(f"{plot_dir}class_grid_show/{save_name}.png")
 
 
 def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
@@ -160,7 +163,41 @@ def plot_cytoimagenet():
         im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
         imgs.append(np.array(im.resize((28, 28))))
 
-    torch_gridplot_images(imgs, save=True, save_name='cytoimagenet_plot2')
+    torch_gridplot_images(imgs, save=True, save_name='cytoimagenet_plot3')
+
+
+def plot_restricted_cytoimagenet(num_labels=10, num_imgs=2,
+                                 use_labels=None) -> None:
+    """ Creates plot of samples from CytoImageNet classes by row.
+    :param num_labels: Number of labels to plot.
+    :param num_imgs: Number of images to plot per label
+    :param use_labels: OPTIONAL. Forcibly displays specified labels in plot.
+    """
+    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+
+    # Sample 1 label from each category
+    grouped_labels = df_metadata.groupby(by=['category']).sample(n=1, random_state=11)
+    print(grouped_labels[['category', 'label']])
+
+    sampled_labels = grouped_labels['label'].tolist()
+
+    if use_labels is not None:
+        numLabelsSpecified = len(use_labels)
+        for g in range(numLabelsSpecified):
+            sampled_labels.pop()
+        sampled_labels.insert(0, use_labels)
+
+    df_metadata = df_metadata[df_metadata.label.isin(sampled_labels)].groupby(by=['label'], sort=False).sample(n=num_imgs).reset_index(drop=True)
+
+    imgs = []
+    for curr_label in sampled_labels:
+        class_imgs = []
+        for i in df_metadata[df_metadata.label == curr_label].index:
+            im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
+            class_imgs.append(np.array(im.resize((70, 70))))
+        imgs.append(class_imgs)
+    gridplot_images(imgs, labels=sampled_labels,
+                    save=True, save_name='cytoimagenet_sampled_classes')
 
 
 # CHECK FOR OUTLIERS
@@ -432,19 +469,13 @@ def main():
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    # plot_cytoimagenet()
-    # plot_toy20_umap(save=True)
-
     # Get CytoImageNet-552 labels
     # df_diversity = pd.read_csv(f'{model_dir}similarity/full_diversity(cytoimagenet).csv')
     # labels_excluded = df_diversity[df_diversity.inter_cos_distance_MEAN <= 0.8].label.tolist()
-    #
+    plot_restricted_cytoimagenet()
+
     # df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
     # labels_894 = df.label.unique().tolist()
-
-    imgs = load_images_from_label('nucleus', num_imgs=81, df=None)
-    torch_gridplot_images(imgs, fig_title='nucleus', save_name='nucleus_updated'+"_grid", save=True)
-
     # plot_labels(labels_894, df_metadata=df)
 
 elif "D:\\" in os.getcwd():

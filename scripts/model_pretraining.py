@@ -32,36 +32,48 @@ print(tf.config.list_physical_devices('GPU'))
 # mixed_precision.set_policy(policy)
 
 # ==Label-related Helper Functions==:
-def dirlabel_to_label(labels):
-    """HELPER FUNCTION. Converts directory labels to original labels if
-    possible."""
-    df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-    fixed_labels = []
-    present_labels = df.label.unique()
-    for label in labels:
-        if label in present_labels:
-            fixed_labels.append(label)
-        else:
-            fixed_labels.append(
-                df[df.filename.str.contains(label)].iloc[0].label)
-    return fixed_labels
+def get_labels(diverse: bool = False, toy=None) -> list:
+    """If <diverse>, return list of labels whose mean pairwise INTER cosine
+    distance is greater than 0.8. Elif <toy> specified, return pre-specified
+    20 or 50 labels from CytoImageNet. Else, return list of all labels.
 
-
-def get_labels(diverse: bool = False):
-    """If not <diverse>, return list of all labels.
-
-    If <diverse>, return list of labels whose mean pairwise INTER cosine
-    distance is greater than 0.8.
-
-    NOTE: This removes 341 labels. Most of which are Recursion compound labels.
+    NOTE: <diverse> labels excludes 341 labels. Most of which are Recursion
+    compound labels.
     """
-    if not diverse:
-        df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
-    else:
+    if diverse:
         df_diversity = pd.read_csv(f'{model_dir}similarity/full_diversity(cytoimagenet).csv')
         # Apply threshold
         df_diversity = df_diversity[df_diversity.inter_cos_distance_MEAN > 0.8]
         return df_diversity.label.tolist()
+    elif toy == 'toy_20':  # use predefined subsets of CytoImageNet.
+        return ['actin', 'cell body', 'cell membrane', 'dmso', 'human',
+                'kinase', 'microtubules', 'mitochondria', 'nucleus',
+                'rho associated kinase inhibitor', 'rna',
+                'rna synthesis inhibitor', 's35651', 'tamoxifen',
+                'tankyrase inhibitor', 'trophozoite', 'u2os',
+                'uv inactivated sars-cov-2', 'vamp5 targeted', 'yeast']
+    elif toy == 'toy_50':
+        return ['104-001', 'actin', 'actin inhibitor', 'active sars-cov-2',
+                'activin-a', 'alpha-adrenergic receptor agonist',
+                'angiopoietin-1', 'atp-sensitive potassium channel blocker',
+                'balf', 'bmp-2', 'calr-kdel', 'cell body', 'cell membrane',
+                'cell junctions', 'centrosome', 'chr2 targeted',
+                'clarithromycin',
+                'coco', 'cyclooxygenase inhibitor', 'dmso',
+                'dna synthesis inhibitor', 'dydrogesterone',
+                'erbb family inhibitor', 'estrogen receptor antagonist',
+                'ezh2 targeted', 'fluorometholone', 'glycosylase inhibitor',
+                'heat shock protein inhibitor', 'human', 'ifn-gamma', 'kinase',
+                'microtubules', 'mitochondria', 'mitotic spindle',
+                'nachr antagonist', 'nucleus', 'pcna',
+                'rho associated kinase inhibitor', 'rna',
+                'rna synthesis inhibitor', 's35651', 'siglec-1', 'tamoxifen',
+                'tankyrase inhibitor', 'topoisomerase inhibitor', 'trophozoite',
+                'u2os', 'vamp5 targeted',
+                'voltage-gated potassium channel blocker', 'yeast']
+    else:
+        df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
+        return df.label.unique().tolist()
 
 
 # ==Data Loading==:
@@ -80,51 +92,6 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
     # brightness_range=[0.6, 0.9]
     # zoom_range=[0.5, 1.5]
     """
-    if labels is None:
-        if split:  # If train-val split
-            datagen = ImageDataGenerator(validation_split=0.1,
-                                         rotation_range=360,
-                                         fill_mode='reflect')
-            train_generator = datagen.flow_from_directory(
-                directory=cyto_dir,
-                batch_size=batch_size,
-                target_size=(224, 224),
-                interpolation="bilinear",
-                color_mode="rgb",
-                shuffle=True,
-                seed=728565,
-                subset="training"
-            )
-            val_generator = datagen.flow_from_directory(
-                directory=cyto_dir,
-                batch_size=batch_size,
-                target_size=(224, 224),
-                interpolation="bilinear",
-                color_mode="rgb",
-                shuffle=True,
-                seed=728565,
-                subset="validation"
-            )
-            return train_generator, val_generator
-        else: # If don't use train-val split
-            datagen = ImageDataGenerator(rotation_range=360, fill_mode='reflect')
-            train_generator = datagen.flow_from_directory(
-                directory=cyto_dir,
-                batch_size=batch_size,
-                target_size=(224, 224),
-                interpolation="bilinear",
-                color_mode="rgb",
-                shuffle=True,
-                seed=728565
-            )
-        return train_generator, None
-
-    # Specify to use predefined labels.
-    elif labels == 'toy_20':
-        labels = toy_20
-    elif labels == 'toy_50':
-        labels = toy_50
-
     # Use metadata to create generators of image batches
     df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
     df = df[df.label.isin(labels)]
@@ -135,7 +102,7 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
                                             stratify=df['label'])
         train_gen = ImageDataGenerator(
             rotation_range=360, fill_mode='reflect',
-            horizontal_flip=True,
+            # horizontal_flip=True,
         )
         train_generator = train_gen.flow_from_dataframe(
             dataframe=df_train,
@@ -284,10 +251,10 @@ def main():
     global toy_50, toy_20
     # Dataset Parameters
     split = True
-    classes = None                  # None or 'toy_20' or 'toy_50' or get_diverse_labels()
-    num_classes = 894               # 894 or len(classes)
-    dset = "full"          # plot label, 'full' or 'toy20' or 'toy50'
-    save_weights_suffix = '(lr_0001_bs_64_epochs_100)'
+    classes = get_labels(diverse=False)
+    num_classes = len(classes)
+    dset = "full"                           # plot label, 'full' or 'toy20' or 'toy50'
+    save_weights_suffix = '(lr_0001_bs_64_epochs_60)'
 
     # Hyperparameters
     batch_size = 64
@@ -377,33 +344,5 @@ def main():
 
 
 if __name__ == "__main__":
-    toy_50 = ['104-001', 'actin', 'actin inhibitor', 'active sars-cov-2',
-              'activin-a', 'alpha-adrenergic receptor agonist',
-              'angiopoietin-1', 'atp-sensitive potassium channel blocker',
-              'balf', 'bmp-2', 'calr-kdel', 'cell body', 'cell membrane',
-              'cell junctions', 'centrosome', 'chr2 targeted', 'clarithromycin',
-              'coco', 'cyclooxygenase inhibitor', 'dmso',
-              'dna synthesis inhibitor', 'dydrogesterone',
-              'erbb family inhibitor', 'estrogen receptor antagonist',
-              'ezh2 targeted', 'fluorometholone', 'glycosylase inhibitor',
-              'heat shock protein inhibitor', 'human', 'ifn-gamma', 'kinase',
-              'microtubules', 'mitochondria', 'mitotic spindle',
-              'nachr antagonist', 'nucleus', 'pcna',
-              'rho associated kinase inhibitor', 'rna',
-              'rna synthesis inhibitor', 's35651', 'siglec-1', 'tamoxifen',
-              'tankyrase inhibitor', 'topoisomerase inhibitor', 'trophozoite',
-              'u2os', 'vamp5 targeted',
-              'voltage-gated potassium channel blocker', 'yeast']
-
-    toy_20 = ['actin', 'cell body', 'cell membrane', 'dmso', 'human', 'kinase',
-              'microtubules', 'mitochondria', 'nucleus',
-              'rho associated kinase inhibitor', 'rna',
-              'rna synthesis inhibitor', 's35651', 'tamoxifen',
-              'tankyrase inhibitor', 'trophozoite', 'u2os',
-              'uv inactivated sars-cov-2', 'vamp5 targeted', 'yeast']
-
-    # toy_50 = dirlabel_to_label(toy_50)
-    # toy_20 = dirlabel_to_label(toy_20)
-
     # Run main
     main()

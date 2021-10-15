@@ -1,10 +1,9 @@
-from preprocessor import create_image, get_file_references, normalize
-
 import glob
 import os
 import time
 import random
 import shutil
+import sys
 
 import pandas as pd
 import numpy as np
@@ -15,6 +14,7 @@ import multiprocessing
 import PIL
 from PIL import UnidentifiedImageError
 
+
 # Only use CPU
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -22,10 +22,18 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 # PATHS
 if "D:\\" in os.getcwd():
     annotations_dir = "M:/home/stan/cytoimagenet/annotations/"
+    scripts_dir = 'M:/home/stan/cytoimagenet/scripts'
     plot_dir = "M:/home/stan/cytoimagenet/figures/classes/"
 else:
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
+    scripts_dir = '/home/stan/cytoimagenet/scripts'
     plot_dir = "/home/stan/cytoimagenet/figures/classes/"
+
+# Import modules from other scripts
+sys.path.append(f"{scripts_dir}/data_processing")
+sys.path.append(f"{scripts_dir}/data_curation")
+from preprocessor import create_image, get_file_references, normalize
+from analyze_metadata import get_df_counts
 
 
 class HelperFunctions:
@@ -522,6 +530,9 @@ class CytoImageNetCreation:
         # Fix illegal directory filenames
         CytoImageNetCreation.cytoimagenet_fix_incorrect_filenaming()
 
+        # Update metadata
+        CytoImageNetCreation.cytoimagenet_add_category()
+
     # ==Metadata-Specific Functions==
     @staticmethod
     def cytoimagenet_recreate_metadata(labels):
@@ -568,6 +579,8 @@ class CytoImageNetCreation:
             accum_dfs.append(df_)
         df_metadata = pd.concat(accum_dfs, ignore_index=True)
         df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
+        CytoImageNetCreation.cytoimagenet_add_category()
 
     @staticmethod
     def cytoimagenet_fix_metadata():
@@ -781,6 +794,18 @@ class CytoImageNetCreation:
             df_metadata[df_metadata.duplicate].apply(lambda x: os.remove(x.path + "/" + x.filename), axis=1)
             print(len(df_metadata[df_metadata.duplicate]), " removed!")
 
+    @staticmethod
+    def cytoimagenet_add_category():
+        """Update metadata to include label to category mapping."""
+        df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+        df_counts = get_df_counts()
+
+        # Hold updated labels that replaces '/' to '-'
+        modified_labels = df_metadata.label.map(lambda x: x.replace("/", "-"))
+        mapping_label = dict(zip(df_counts.label, df_counts.category))
+        df_metadata['category'] = modified_labels.map(lambda x: mapping_label[x])
+        df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+
 
 def main(file,
          verify_exists=False,
@@ -841,6 +866,7 @@ def main(file,
     # Upsample label
     Upsampler().supplement_label(label, True)
 
+
 if __name__ == '__main__' and "D:\\" not in os.getcwd():
     redo_upsampling = False
     reconstruct_cytoimagenet = False
@@ -863,11 +889,7 @@ if __name__ == '__main__' and "D:\\" not in os.getcwd():
         CytoImageNetCreation.construct_cytoimagenet(all_labels, True)
         print("Metadata Length: ", len(pd.read_csv("/ferrero/cytoimagenet/metadata.csv")))
 
-    # Recreate metadata
-    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-    CytoImageNetCreation.cytoimagenet_fix_metadata()
-
-
-    # CytoImageNetCreation.cytoimagenet_recreate_metadata(all_labels)
+    # Update metadata
+    CytoImageNetCreation.cytoimagenet_add_category()
 
 

@@ -51,7 +51,7 @@ else:
     plot_dir = "/home/stan/cytoimagenet/figures/"
 
 sys.path.append(f"{scripts_dir}/data_processing")
-from scripts.data_processing.preprocessor import normalize as img_normalize
+from preprocessor import normalize as img_normalize
 
 # Only use CPU
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -63,7 +63,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def load_model(weights='cytoimagenet',
-               weights_filename='efficientnetb0_from_random-epoch_20.h5',
+               weights_filename='efficientnetb0_from_random-epoch_48.h5',
                init='random', overwrite=True, dset_=None):
     """Return EfficientNetB0 model. <weights> specify what weights to load into
     the model.
@@ -1264,6 +1264,8 @@ def compile_results(val_set='bbbc021'):
     # Change naming convention
     map_name = {'cytoimagenetfull-16_epochs': 'CytoImageNet-894 [16 epochs]',
                 'cytoimagenetfull-100_epochs': 'CytoImageNet-894 [100 epochs]',
+                'cytoimagenetfull(aug)-24_epochs': 'CytoImageNet-894 with aug [24 epochs]',
+                'cytoimagenetfull(aug)-48_epochs': 'CytoImageNet-894 with aug [48 epochs]',
                 'cytoimagenetfull_filtered-43_epochs': 'CytoImageNet-552 with aug [43 epochs]',
                 'cytoimagenetfull_filtered-80_epochs': 'CytoImageNet-552 with aug [80 epochs]',
                 'cytoimagenetfull_filtered(no_aug)-20_epochs': 'CytoImageNet-552 w/o aug [20 epochs]',
@@ -1284,9 +1286,12 @@ def compile_results(val_set='bbbc021'):
 
     # Reorder columns
     preferred = ['Accuracy by preprocessing method', 'Random', 'ImageNet',
-                 'CytoImageNet-894 [16 epochs]', 'CytoImageNet-894 [100 epochs]',
-                 'CytoImageNet-552 with aug [43 epochs]', 'CytoImageNet-552 with aug [80 epochs]',
-                 'CytoImageNet-552 w/o aug [20 epochs]']
+                 'CytoImageNet-894 with aug [48 epochs]',
+                 # 'CytoImageNet-894 with aug [24 epochs]',
+                 # 'CytoImageNet-894 [16 epochs]', 'CytoImageNet-894 [100 epochs]',
+                 # 'CytoImageNet-552 with aug [43 epochs]', 'CytoImageNet-552 with aug [80 epochs]',
+                 # 'CytoImageNet-552 w/o aug [20 epochs]'
+                 ]
     preferred = [i for i in preferred if i in accum_df.columns]
     accum_df= accum_df[preferred]
 
@@ -1294,21 +1299,22 @@ def compile_results(val_set='bbbc021'):
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    dset = 'full_filtered'
+    dset = 'full'
 
     # Weights for models trained on 894 class dataset
     weights_full_overfit = 'efficientnetb0_from_random(lr_0001_bs_64_epochs_100).h5'
     weights_full_underfit = 'efficientnetb0_from_random-epoch_16.h5'
+    # weights_full_aug = 'efficientnetb0_from_random-epoch_24.h5'
+    weights_full_aug = 'efficientnetb0_from_random-epoch_48.h5'
 
     # Weights for models trained on 552 class dataset
     weights_full_filtered_underfit = 'efficientnetb0_from_random-epoch_43.h5'
     weights_full_filtered_overfit = 'efficientnetb0_from_random-epoch_80.h5'
-
     weights_full_filtered_noaug = 'efficientnetb0_from_random-epoch_20.h5'
 
-    main_coos('full_filtered(no_aug)-20_epochs', dset)
-    main_cyclops('full_filtered(no_aug)-20_epochs', dset)
-    main_bbbc021('full_filtered(no_aug)-20_epochs', dset)
+    main_coos('full(aug)-48_epochs', dset)
+    main_cyclops('full(aug)-48_epochs', dset)
+    main_bbbc021('full(aug)-48_epochs', dset)
 
     for val_set in ['bbbc021', 'cyclops', 'coos7_test1', 'coos7_test2', 'coos7_test3', 'coos7_test4']:
         compile_results(val_set)

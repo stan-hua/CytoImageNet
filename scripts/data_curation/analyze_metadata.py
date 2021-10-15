@@ -408,20 +408,6 @@ def remove_class_from_used_images(label: str) -> None:
         json.dump(used_indices, f)
 
 
-# REMOVING REDUNDANT IMAGES
-def cytoimagenet_remove_duplicates():
-    df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-    # Save unique rows
-    df_unique = df_metadata[~df_metadata.duplicated(subset=["filename"])]
-    df_unique.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
-
-    # Remove duplicate images from directory
-    duplicates = df_metadata[df_metadata.duplicated(subset=["filename"])]
-    duplicates.apply(lambda x: os.remove(x.path + "/" + x.filename), axis=1)
-    if len(duplicates) > 0:
-        print(len(duplicates), " removed!")
-
-
 # RECREATING RECORD OF USED INDICES
 def recreate_used_indices_with_cytoimagenet():
     """Recreate used_images.json using current metadata in

@@ -326,8 +326,8 @@ class DiversityMetric:
         global model_dir
 
         # Verify that embeddings for samples of the full dataset exists
-        # if not os.path.exists(f"{model_dir}/{self.weights}-activations/{self.dset}_dset_embeddings.h5"):
-        #     extract_embeds_from_sample(self.dset, weights=self.weights)
+        if not os.path.exists(f"{model_dir}/{self.weights}-activations/{self.dset}_dset_embeddings.h5"):
+            extract_embeds_from_sample(self.dset, weights=self.weights)
         if self.weights == 'cytoimagenet':
             suffix = '(16_epochs)'
         else:
@@ -484,7 +484,7 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     dset = 'full'
     for weights in ['cytoimagenet']:
         div_metrics = DiversityMetric(dset=dset, weights=weights)
-        # div_metrics.get_all_diversity()
+        div_metrics.get_all_diversity()
         div_metrics.plot_all_diversity()
 else:
     # Get label -> database mapping
