@@ -13,6 +13,14 @@ our ability to capture and store biological images has grown tremendously to the
 Thus, a need for **automated methods to help analyze biological images** emerges.
 Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a large-scale dataset of weakly labeled microscopy images. We believe that pretraining deep learning models on CytoImageNet will result in models that can extract image features with stronger biological signals from microscopy images, in comparison to ImageNet features that were trained originally on natural images (e.g. buses, airplanes).
 
+
+## Results
+
+Our trained model only achieved 13.42% accuracy on the training set and 11.32% on the validation set. Yet, it produced features competitive to ImageNet on all 3 downstream microscopy classification tasks. 
+
+Given the closer domain of CytoImageNet, we find it surprising that features pretrained on CytoImageNet don’t beat ImageNet-pretrained features by a significant margin. In the case of ImageNet, Kornblith, Shlens and Le 2019 reported a strong correlation between ImageNet validation accuracy and transfer accuracy. It may be that we haven’t had the opportunity to optimize the model enough, and we believe this may be explored in future work. In addition, it has been found that pretraining on a subset of ImageNet (with classes more similar to the target task) can improve transfer performance. Future researchers may explore pretraining on labels from specific categories (e.g. phenotype) if the target task focuses more on cell phenotype, compounds/treatment, or protein localization.
+
+
 ## About the data
 **890,737** total images. **894 classes** (~1000 images per class). 
 
@@ -187,11 +195,6 @@ This dataset is composed of single-cell images of yeast cells. The evaluation pr
 2. Using 11-nearest neighbors, classify the protein's localization given in one of 17 labels.
 
 **RELEVANT CODE**: [`model_evaluation.py`](https://github.com/stan-hua/CytoImageNet/blob/master/scripts/model_evaluation.py)
-
-### Results
-
-Notably, our model only achieved 13.42% accuracy on the training set and 11.32% on the validation set. Yet, it produced features competitive to ImageNet. It is surprising that features pretrained on CytoImageNet don’t beat ImageNet-pretrained features. As Kornblith, Shlens and Le 2019 reported a strong correlation between ImageNet validation accuracy and transfer accuracy, it may be that we haven’t had the opportunity to optimize the model enough, and this may be explored in future work.
-
 
 ---
 
