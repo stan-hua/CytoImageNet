@@ -70,7 +70,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 **EXTRA NOTE**: All labels were converted to lowercase, which may make searching labels difficult, particularly with compound labels.
 
 ### Availability of Data
-We plan to make the dataset available on Kaggle.
+CytoImageNet is now available on Kaggle: https://www.kaggle.com/stanleyhua/cytoimagenet. It can be loaded into a Kaggle / Collab notebook, or downloaded to your computer (~56 GB).
 
 ---
 # Methods
