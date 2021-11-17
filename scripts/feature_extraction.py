@@ -1,4 +1,4 @@
-from model_evaluation import load_model
+# from model_evaluation import load_model
 
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -50,7 +50,7 @@ else:
     plot_dir = "/home/stan/cytoimagenet/figures/"
 
 sys.path.append(f"{scripts_dir}/data_curation")
-from analyze_metadata import get_df_counts
+# from analyze_metadata import get_df_counts
 
 # Plot Settings
 sns.set_style("dark")
@@ -481,11 +481,19 @@ def main():
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    dset = 'full'
-    for weights in ['cytoimagenet']:
-        div_metrics = DiversityMetric(dset=dset, weights=weights)
-        div_metrics.get_all_diversity()
-        div_metrics.plot_all_diversity()
+    df = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
+    try:
+        df.drop(columns=["duplicate"], inplace=True)
+    except:
+        pass
+    df.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+    df.to_feather("/ferrero/cytoimagenet/metadata.ftr")
+
+    # dset = 'full'
+    # for weights in ['cytoimagenet']:
+    #     div_metrics = DiversityMetric(dset=dset, weights=weights)
+    #     div_metrics.get_all_diversity()
+    #     div_metrics.plot_all_diversity()
 else:
     # Get label -> database mapping
     df_metadata = pd.read_csv('M:/ferrero/cytoimagenet/metadata.csv')

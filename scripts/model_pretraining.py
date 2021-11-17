@@ -87,10 +87,6 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
         - shuffle: True
         - seed: 7779836983
         - interpolation: bilinear
-
-    TODO: Try Augmentations
-    # brightness_range=[0.6, 0.9]
-    # zoom_range=[0.5, 1.5]
     """
     # Use metadata to create generators of image batches
     df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
@@ -101,8 +97,7 @@ def load_dataset(batch_size: int = 64, split=False, labels=None):
         df_train, df_val = train_test_split(df, test_size=0.1, random_state=0,
                                             stratify=df['label'])
         train_gen = ImageDataGenerator(
-            rotation_range=360, fill_mode='reflect',
-            # horizontal_flip=True,
+            rotation_range=360, fill_mode='reflect'
         )
         train_generator = train_gen.flow_from_dataframe(
             dataframe=df_train,
