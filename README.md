@@ -1,7 +1,7 @@
 # CytoImageNet
 A large-scale pretraining dataset for bioimage transfer learning. 
 
-![cytoimagenet_plot](https://user-images.githubusercontent.com/63123494/131281187-37ef3142-90bb-482e-a37f-4484a7d8f003.png)
+![cytoimagenet_plot](https://github.com/stan-hua/CytoImageNet/blob/c65f28d6ca27cb7ecb37dfa442576083b5496522/figures/github_images/cytoimagenet_plot.png)
 
 Motivation
 ---
@@ -16,11 +16,13 @@ Here, we take inspiration from the success of ImageNet to curate CytoImageNet; a
 
 ## Results
 
-Our trained model only achieved 13.42% accuracy on the training set and 11.32% on the validation set. Yet, it produced features competitive to ImageNet on all 3 downstream microscopy classification tasks. 
+We show that concatenation of CytoImageNet-pretrained and ImageNet-pretrained features yields state-of-the-art results on bioimage transfer tasks. This implies that CytoImageNet and ImageNet pretraining result in the learning of different albeit meaningful image representations.
 
-Given the closer domain of CytoImageNet, we find it surprising that features pretrained on CytoImageNet don’t beat ImageNet-pretrained features by a significant margin. In the case of ImageNet, Kornblith, Shlens and Le 2019 reported a strong correlation between ImageNet validation accuracy and transfer accuracy. It may be that we haven’t had the opportunity to optimize the model enough, and we believe this may be explored in future work. In addition, it has been found that pretraining on a subset of ImageNet (with classes more similar to the target task) can improve transfer performance. Future researchers may explore pretraining on labels from specific categories (e.g. phenotype) if the target task focuses more on cell phenotype, compounds/treatment, or protein localization.
+Interestingly, our trained model only achieved 13.42% accuracy on the training set and 11.32% on the validation set. Yet, it still produced features competitive to ImageNet on all 3 downstream microscopy classification tasks. Given the closer domain of CytoImageNet, we find it surprising that CytoImageNet-pretrained features alone don’t outperform ImageNet-pretrained features.
 
-Read more [**here**](https://github.com/stan-hua/CytoImageNet/blob/master/preprint.pdf).
+A recent study on ImageNet pretraining reported a strong correlation between ImageNet validation accuracy and transfer accuracy. It may be that we haven’t had the opportunity to optimize the model enough, and we believe this may be explored in future work. In addition, it has been found that pretraining on a subset of ImageNet (with classes more similar to the target task) can improve transfer performance. Future researchers may explore pretraining on labels from specific categories (e.g. phenotype) if the target task focuses more on cell phenotype, compounds/treatment, or protein localization.
+
+Read more [**here**](https://arxiv.org/abs/2111.11646).
 
 ## About the data
 **890,737** total images. **894 classes** (~1000 images per class). 
@@ -70,7 +72,7 @@ correspond to any of [organism, cell_type, cell_visible, phenotype, compound, ge
 **EXTRA NOTE**: All labels were converted to lowercase, which may make searching labels difficult, particularly with compound labels.
 
 ### Availability of Data
-CytoImageNet is now available on Kaggle: https://www.kaggle.com/stanleyhua/cytoimagenet. It can be loaded into a Kaggle / Collab notebook, or downloaded to your computer (~56 GB).
+CytoImageNet is now available on Kaggle: https://www.kaggle.com/stanleyhua/cytoimagenet (~56 GB).
 
 ---
 # Methods
