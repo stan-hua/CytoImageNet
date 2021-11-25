@@ -1,9 +1,6 @@
 from scripts.data_processing.preprocessor import get_file_references
 
 import os
-import json
-
-import pandas as pd
 
 # PATHS
 annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -57,47 +54,3 @@ def get_image_origin(x):
     elif x.dir_name == "idr0072":
         filenames = [x.path + "/" + x.filename.replace(".png", ".flex")]
     return filenames
-
-
-def copy_used_images():
-    """Copies files and directory structure for CytoImageNet source images.
-    """
-    try:
-        with open(f"{annotations_dir}/idx_to_original_images.json") as f:
-            all_mapping = json.load(f)
-    except:
-        all_mapping = {}
-
-    df_metadata = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
-    unique_idx = df_metadata.idx.unique().tolist()
-
-    for idx in unique_idx:
-        df = pd.read_csv(file)
-        df = df[~df.idx.isin(all_mapping)]
-        if len(df) > 0:
-            filename_series = df.apply(get_image_origin, axis=1)
-            curr_mapping = pd.Series(filename_series.values, index=df.idx).to_dict()
-            all_mapping.update(curr_mapping)
-
-            # Save Mapping
-            with open(f"{annotations_dir}/idx_to_original_images.json", 'w') as f:
-                json.dump(all_mapping, f)
-
-        print(file.split("classes/")[-1].replace(".csv", "") + " Done!")
-
-
-    # Copy bbbc021
-
-
-if __name__ == "__main__":
-    try:
-        with open(f"{annotations_dir}/idx_to_original_images.json") as f:
-            all_mapping = json.load(f)
-    except:
-        all_mapping = {}
-
-    # all_used_files = glob.glob(annotations_dir + "classes/*.csv")
-    # all_used_files.extend(glob.glob(annotations_dir + "unused_classes/*.csv"))
-
-
-

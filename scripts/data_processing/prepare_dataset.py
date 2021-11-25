@@ -1,19 +1,18 @@
+from preprocessor import create_image, normalize
+from scripts.data_curation.analyze_metadata import get_df_counts
+
 import glob
+import multiprocessing
 import os
-import time
 import random
 import shutil
 import sys
 
-import pandas as pd
-import numpy as np
-from PIL import Image
-import cv2
-
-import multiprocessing
 import PIL
-from PIL import UnidentifiedImageError
-
+import cv2
+import numpy as np
+import pandas as pd
+from PIL import Image
 
 # Only use CPU
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -30,10 +29,11 @@ else:
     plot_dir = "/home/stan/cytoimagenet/figures/classes/"
 
 # Import modules from other scripts
-sys.path.append(f"{scripts_dir}/data_processing")
-sys.path.append(f"{scripts_dir}/data_curation")
-from preprocessor import create_image, get_file_references, normalize
-from analyze_metadata import get_df_counts
+# sys.path.append(f"{scripts_dir}/data_processing")
+# sys.path.append(f"{scripts_dir}/data_curation")
+
+
+
 
 
 class HelperFunctions:

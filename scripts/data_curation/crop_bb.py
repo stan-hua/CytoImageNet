@@ -2,9 +2,10 @@
 Create image crops using bounding box annotations.
 """
 
-import pandas as pd
-import numpy as np
 import os
+
+import numpy as np
+import pandas as pd
 from PIL import Image
 
 if "D:\\" not in os.getcwd():

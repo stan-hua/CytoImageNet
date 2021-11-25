@@ -31,6 +31,7 @@ print(tf.config.list_physical_devices('GPU'))
 # policy = mixed_precision.Policy('mixed_float16')
 # mixed_precision.set_policy(policy)
 
+
 # ==Label-related Helper Functions==:
 def get_labels(diverse: bool = False, toy=None) -> list:
     """If <diverse>, return list of labels whose mean pairwise INTER cosine

@@ -1,24 +1,20 @@
+import glob
+import os
+import random
+from math import floor, sqrt
 from typing import Union
-from math import sqrt, floor
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-from PIL import Image
-import matplotlib.pyplot as plt
-from matplotlib import font_manager
-import seaborn as sns
 import pylab
-
-import random
-import os
-import glob
-
-from sklearn.cluster import DBSCAN
-import umap
-import umap.plot
-
+import seaborn as sns
 import torch
 import torchvision
+import umap
+import umap.plot
+from PIL import Image
+from sklearn.cluster import DBSCAN
 
 if "D:\\" not in os.getcwd():
     annotations_dir = "/home/stan/cytoimagenet/annotations/"
@@ -53,10 +49,13 @@ def check_label_files():
         if len(df) <= 0:
             print(file)
 
-        all_exists.append(all(df.apply(lambda x: True if os.path.exists(x.path + "/" + x.filename) else False, axis=1)))
+        all_exists.append(all(df.apply(lambda x: True if os.path.exists(
+            x.path + "/" + x.filename) else False, axis=1)))
         num_examples.append(len(df))
-    df = pd.DataFrame({"label": labels, "num_images": num_examples, "all_exist":all_exists})
-    df.label = df.label.map(lambda x: x.split("classes\\")[-1].replace(".csv", ""))
+    df = pd.DataFrame(
+        {"label": labels, "num_images": num_examples, "all_exist": all_exists})
+    df.label = df.label.map(
+        lambda x: x.split("classes\\")[-1].replace(".csv", ""))
     return df
 
 
@@ -89,7 +88,7 @@ def gridplot_images(imgs: list, labels: list,
         same label.
      """
     nrows, ncols = len(imgs), len(imgs[0])  # array of sub-plots
-    figsize = [2.5, 9]     # figure size, inches
+    figsize = [2.5, 9]  # figure size, inches
 
     # Create subplots
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols,
@@ -111,7 +110,8 @@ def gridplot_images(imgs: list, labels: list,
         plt.savefig(f"{plot_dir}class_grid_show/{save_name}.png")
 
 
-def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plot'):
+def torch_gridplot_images(imgs: list, save=False, fig_title=None,
+                          save_name='plot'):
     """Plot grid of images. Use only as many to create a perfectly filled in
      square."""
     num_imgs = len(imgs)
@@ -120,7 +120,7 @@ def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plo
     used_imgs = imgs.copy()
     random.shuffle(used_imgs)
 
-    if len(imgs) > nrows ** 2:      # sample images if above perfect square
+    if len(imgs) > nrows ** 2:  # sample images if above perfect square
         used_imgs = random.sample(imgs, nrows ** 2)
 
     # Convert list of images to tensor.
@@ -139,7 +139,8 @@ def torch_gridplot_images(imgs: list, save=False, fig_title=None, save_name='plo
     if fig_title is not None:
         plt.title(fig_title)
     if save:
-        plt.savefig(f"{plot_dir}class_grid_show/cytoimagenet_classes/{save_name}.png")
+        plt.savefig(
+            f"{plot_dir}class_grid_show/cytoimagenet_classes/{save_name}.png")
 
 
 def plot_labels(labels, df_metadata=None):
@@ -148,7 +149,7 @@ def plot_labels(labels, df_metadata=None):
     for label in labels:
         imgs = load_images_from_label(label, num_imgs=81, df=df_metadata)
         if torch_gridplot_images(imgs, fig_title=label,
-                                 save_name=label+"_grid", save=True) is None:
+                                 save_name=label + "_grid", save=True) is None:
             print("Success! for " + label)
         else:
             print("No images for " + label)
@@ -156,11 +157,13 @@ def plot_labels(labels, df_metadata=None):
 
 def plot_cytoimagenet():
     df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
-    df_metadata = df_metadata.groupby(by=['label']).sample(n=1).reset_index(drop=True)
+    df_metadata = df_metadata.groupby(by=['label']).sample(n=1).reset_index(
+        drop=True)
 
     imgs = []
     for i in df_metadata.index:
-        im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
+        im = Image.open(
+            df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
         imgs.append(np.array(im.resize((28, 28))))
 
     torch_gridplot_images(imgs, save=True, save_name='cytoimagenet_plot3')
@@ -176,7 +179,8 @@ def plot_restricted_cytoimagenet(num_labels=10, num_imgs=2,
     df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
 
     # Sample 1 label from each category
-    grouped_labels = df_metadata.groupby(by=['category']).sample(n=1, random_state=11)
+    grouped_labels = df_metadata.groupby(by=['category']).sample(n=1,
+                                                                 random_state=11)
     print(grouped_labels[['category', 'label']])
 
     sampled_labels = grouped_labels['label'].tolist()
@@ -187,13 +191,15 @@ def plot_restricted_cytoimagenet(num_labels=10, num_imgs=2,
             sampled_labels.pop()
         sampled_labels.insert(0, use_labels)
 
-    df_metadata = df_metadata[df_metadata.label.isin(sampled_labels)].groupby(by=['label'], sort=False).sample(n=num_imgs).reset_index(drop=True)
+    df_metadata = df_metadata[df_metadata.label.isin(sampled_labels)].groupby(
+        by=['label'], sort=False).sample(n=num_imgs).reset_index(drop=True)
 
     imgs = []
     for curr_label in sampled_labels:
         class_imgs = []
         for i in df_metadata[df_metadata.label == curr_label].index:
-            im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[i, "filename"])
+            im = Image.open(df_metadata.loc[i, "path"] + "/" + df_metadata.loc[
+                i, "filename"])
             class_imgs.append(np.array(im.resize((70, 70))))
         imgs.append(class_imgs)
     gridplot_images(imgs, labels=sampled_labels,
@@ -224,7 +230,9 @@ def is_outlier(embeds: pd.DataFrame):
     df_embeds['outlier'] = None
 
     for cluster in np.unique(clusters.labels_):
-        if len(df_embeds[df_embeds.cluster == cluster]['labels'].unique()) == 1 or len(df_embeds[df_embeds.cluster == cluster]) < 100:
+        if len(df_embeds[df_embeds.cluster == cluster][
+                   'labels'].unique()) == 1 or len(
+                df_embeds[df_embeds.cluster == cluster]) < 100:
             df_embeds.loc[(df_embeds.cluster == cluster), 'outlier'] = True
         else:
             df_embeds.loc[(df_embeds.cluster == cluster), 'outlier'] = False
@@ -258,21 +266,26 @@ def create_umap(labels: Union[str, list],
                 class_meta_filename = f"{annotations_dir}classes/{label}.csv"
             df_class = pd.read_csv(class_meta_filename).reset_index(drop=True)
             # Activations
-            temp = pd.read_csv(f"{model_dir}{directory}/{kind}/{label}_activations.csv")
+            temp = pd.read_csv(
+                f"{model_dir}{directory}/{kind}/{label}_activations.csv")
             activations.append(temp)
 
             # Confirm activations and metadata match
             if len(temp) != len(df_class):
                 print(kind, label, " has uneven activation - metadata")
-                print("Length Activations/Label Metadata: ", len(temp), len(df_class))
+                print("Length Activations/Label Metadata: ", len(temp),
+                      len(df_class))
 
             # Accumulate labels & absolute file paths
             label_handle.extend([label] * len(temp))
-            file_paths.extend(df_class.apply(lambda x: x.path + "/" + x.filename, axis=1).tolist())
+            file_paths.extend(
+                df_class.apply(lambda x: x.path + "/" + x.filename,
+                               axis=1).tolist())
 
         activations = pd.concat(activations, ignore_index=True)
-    else:   # Get activations for validation set
-        activations = pd.read_csv(f"{model_dir}{directory}/unseen_classes_embeddings ({weights}, {dset}).csv")
+    else:  # Get activations for validation set
+        activations = pd.read_csv(
+            f"{model_dir}{directory}/unseen_classes_embeddings ({weights}, {dset}).csv")
         df = pd.read_csv("/ferrero/stan_data/unseen_classes/metadata.csv")
         label_handle = df.label.to_numpy()
 
@@ -283,7 +296,8 @@ def create_umap(labels: Union[str, list],
     return embedding, np.array(label_handle), file_paths
 
 
-def plot_umap(embeds: np.array, labels: list, name: str = "", save: bool = False):
+def plot_umap(embeds: np.array, labels: list, name: str = "",
+              save: bool = False):
     """Plot 2D U-Map of extracted image embeddings for <labels>.
 
     ==Parameters==:
@@ -324,8 +338,8 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
     if by == "resolution" and kind != "upsampled":
         raise Exception("Only upsampled classes can be plotted by resolution!")
 
-
-    df_embed = pd.read_csv(model_dir + f'imagenet-activations/{kind}_embeddings (random 20, imagenet).csv')
+    df_embed = pd.read_csv(
+        model_dir + f'imagenet-activations/{kind}_embeddings (random 20, imagenet).csv')
     if by == "cluster":
         # Density-based Clustering
         cluster_labels = cluster_by_density(df_embed)
@@ -335,11 +349,13 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
             embed_cluster = df_embed.loc[cluster_labels == cluster]
             if len(embed_cluster) > 25:
                 embed_cluster = embed_cluster.sample(n=25)
-            imgs = [np.array(Image.open(path)) for path in embed_cluster.full_path.tolist()]
+            imgs = [np.array(Image.open(path)) for path in
+                    embed_cluster.full_path.tolist()]
             gridplot_images(imgs, f"{kind} cluster_{cluster}", save=True)
 
         # Plot U-Map labeled by cluster assignment
-        plot_umap(np.array(df_embed.iloc[:, :2]), cluster_labels, name=f"{kind}/{kind}_clustered", save=save)
+        plot_umap(np.array(df_embed.iloc[:, :2]), cluster_labels,
+                  name=f"{kind}/{kind}_clustered", save=save)
 
     if kind == "upsampled":
         label_dir = f"{annotations_dir}classes/upsampled/"
@@ -361,7 +377,8 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
 
     # Create Plot
     plt.figure()
-    ax = sns.scatterplot(x=df_embed.iloc[:, :2].to_numpy()[:, 0], y=df_embed.iloc[:, :2].to_numpy()[:, 1],
+    ax = sns.scatterplot(x=df_embed.iloc[:, :2].to_numpy()[:, 0],
+                         y=df_embed.iloc[:, :2].to_numpy()[:, 1],
                          hue=info,
                          legend='full',
                          alpha=1,
@@ -395,8 +412,12 @@ def plot_umap_by(by: str, kind: str = "base", save: bool = False):
 def plot_toy20_umap(save: bool = False):
     """Plot UMap for 20 chosen classes subset from CytoImageNet."""
     # Get activations and labels
-    df_embeds = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/toy_20_dset_embeddings.h5", 'embed')
-    labels = pd.read_hdf(f"{model_dir}/cytoimagenet-activations/toy_20_dset_embeddings.h5", 'label')
+    df_embeds = pd.read_hdf(
+        f"{model_dir}/cytoimagenet-activations/toy_20_dset_embeddings.h5",
+        'embed')
+    labels = pd.read_hdf(
+        f"{model_dir}/cytoimagenet-activations/toy_20_dset_embeddings.h5",
+        'label')
     # df_embeds['label'] = labels
 
     # Create 2D UMAP Embeddings
@@ -406,8 +427,6 @@ def plot_toy20_umap(save: bool = False):
     print(embeddings.shape)
 
     the_labels = pd.Series(labels).tolist()
-
-
 
     # new_df_embeds = pd.DataFrame(embeddings)
 
@@ -441,7 +460,7 @@ def from_label_to_paths(label: str, kind: str):
 
 def main():
     # Parameters
-    weights = "cytoimagenet"      # 'imagenet' or None
+    weights = "cytoimagenet"  # 'imagenet' or None
     dset = 'toy_50'
 
     # Directory to load activations
@@ -461,11 +480,13 @@ def main():
                       'ccnd1 targeted', 's7902', 'clofarabine', 'ficz']
 
     # VALIDATION SET
-    embeds, labels, full_paths = create_umap(random_classes, directory=activation_loc,
+    embeds, labels, full_paths = create_umap(random_classes,
+                                             directory=activation_loc,
                                              kind=None, data_subset='val')
 
     # Plot U-Map labeled by category labels
-    plot_umap(np.array(embeds), labels, name=f"unseen_classes ({weights}, {dset})", save=True)
+    plot_umap(np.array(embeds), labels,
+              name=f"unseen_classes ({weights}, {dset})", save=True)
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
@@ -482,4 +503,3 @@ elif "D:\\" in os.getcwd():
     pass
     # plot_umap_by('resolution', "upsampled", True)
     plot_umap_by('dataset', "base", True)
-

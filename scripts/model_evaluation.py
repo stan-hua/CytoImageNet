@@ -1,33 +1,27 @@
-from tensorflow.keras.applications import EfficientNetB0
-import tensorflow as tf
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn import preprocessing
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
-import faiss
-
-import cv2
-import PIL
-
-import os
-import glob
-import warnings
 import datetime
+import glob
+import os
+import warnings
+from math import ceil
 from typing import List, Optional, Tuple
 
-import pandas as pd
-import numpy as np
-import scipy.stats as stats
-from math import ceil
-
-import umap
-import seaborn as sns
+import PIL
+import cv2
+import faiss
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy.stats as stats
+import seaborn as sns
+import tensorflow as tf
+import umap
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-# Add scripts subdirectory to PATH
-import sys
+from data_processing.preprocessor import normalize as img_normalize
 
 # Plotting Settings
 sns.set_style("white")
@@ -52,8 +46,6 @@ else:
     weights_dir = '/home/stan/cytoimagenet/model/cytoimagenet-weights/'
     plot_dir = "/home/stan/cytoimagenet/figures/"
 
-sys.path.append(f"{scripts_dir}/data_processing")
-from preprocessor import normalize as img_normalize
 
 # Only use CPU
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -845,14 +837,18 @@ class CytoImageNetValidation():
         # confusion_matrix(df_val.label, df_val.predicted)
 
         # Accuracy per class
-        acc_by_class = df_val.groupby(by=["label"]).apply(lambda df: sum(df.label == df.predicted)/len(df))
+        acc_by_class = df_val.groupby(by=["label"]).apply(
+            lambda df: sum(df.label == df.predicted) / len(df))
         acc_by_class.name = "accuracy"
         acc_by_class = acc_by_class.reset_index()
 
         # Get category
-        label_category = df_val.groupby(by=["label"]).sample(n=1)[["label", "category"]]
-        label_category_map = dict(zip(label_category.label, label_category.category))
-        acc_by_class["category"] = acc_by_class['label'].map(lambda x: label_category_map[x])
+        label_category = df_val.groupby(by=["label"]).sample(n=1)[
+            ["label", "category"]]
+        label_category_map = dict(
+            zip(label_category.label, label_category.category))
+        acc_by_class["category"] = acc_by_class['label'].map(
+            lambda x: label_category_map[x])
 
         # Zero-Accuracy classes + Cell Visible
         print(acc_by_class[(acc_by_class.accuracy == 0) &
@@ -1116,7 +1112,8 @@ class COOS7Validation(ValidationProcedure):
     """
 
     def __init__(self, dset, test, suffix=''):
-        self.data_dir = f'/neuhaus/alexlu/datasets/IMAGE_DATASETS/COOS-MOUSE_david-andrews/CURATED-COOS7/{test}'
+        self.coos_dir = f'/neuhaus/alexlu/datasets/IMAGE_DATASETS/COOS-MOUSE_david-andrews/CURATED-COOS7/'
+        self.data_dir = f'{self.coos_dir}{test}'
         self.test_metadata = self.load_metadata(coos_dset='test')
         self.train_metadata = self.load_metadata(coos_dset='train')
         self.test_set = test
@@ -1137,7 +1134,7 @@ class COOS7Validation(ValidationProcedure):
             files = glob.glob(os.sep.join([self.data_dir, '*']))
             labels = [file.split(self.data_dir + os.sep)[-1] for file in files]
         else:
-            train_dir = f'/neuhaus/alexlu/datasets/IMAGE_DATASETS/COOS-MOUSE_david-andrews/CURATED-COOS7/train'
+            train_dir = f'{self.coos_dir}/train'
             files = glob.glob(os.sep.join([train_dir, '*']))
             labels = [file.split(train_dir + os.sep)[-1] for file in files]
 
@@ -1485,7 +1482,8 @@ def main_coos(cyto_suffix='', dset='full'):
             for concat in [True, False]:
                 for norm in [True, False]:
                     suffix = f" ({check_weights_str(weights)}, {create_save_str(concat, norm)})"
-                    print(f"Processing kNN predictions for {protocol.name.upper()} w/{suffix}...")
+                    print(
+                        f"Processing kNN predictions for {protocol.name.upper()} w/{suffix}...")
                     protocol.evaluate(weights=weights, concat=concat, norm=norm)
             # Get final results
             protocol.get_all_results(weights)
@@ -1575,9 +1573,11 @@ def compile_results(val_set='bbbc021'):
     accum_df['Accuracy by preprocessing method'] = curr_df.apply(
         lambda x: create_save_str(not x.to_grayscale, x.normalized).replace(
             ', ', ' and '), axis=1)
-    accuracy_ci = curr_df.apply(lambda x: f"{round(x.total_accuracy * 100, 2)} +/- {round(x.ci * 100, 2)}%",
+    accuracy_ci = curr_df.apply(lambda
+                                    x: f"{round(x.total_accuracy * 100, 2)} +/- {round(x.ci * 100, 2)}%",
                                 axis=1).tolist()
-    accum_df = accum_df.assign(**{map_name[curr_df.weights.iloc[0]]: accuracy_ci})
+    accum_df = accum_df.assign(
+        **{map_name[curr_df.weights.iloc[0]]: accuracy_ci})
 
     for file in files[1:]:
         curr_df = pd.read_csv(file)
@@ -1588,7 +1588,8 @@ def compile_results(val_set='bbbc021'):
         if len(accuracy_ci) == 1:
             accuracy_ci.extend([None, None, None])
         # Assign weights to accuracy
-        accum_df = accum_df.assign(**{map_name[curr_df.weights.iloc[0]]: accuracy_ci})
+        accum_df = accum_df.assign(
+            **{map_name[curr_df.weights.iloc[0]]: accuracy_ci})
 
     # Reorder columns
     preferred = ['Accuracy by preprocessing method', 'Random', 'ImageNet',
@@ -1636,5 +1637,6 @@ if __name__ == "__main__" and "D:\\" not in os.getcwd():
     # main_coos(curr_weights, dset)
     # main_cyclops(curr_weights, dset)
     # main_bbbc021(curr_weights, dset)
-    for val_set in ['bbbc021', 'cyclops', 'coos7_test1', 'coos7_test2', 'coos7_test3', 'coos7_test4']:
+    for val_set in ['bbbc021', 'cyclops', 'coos7_test1', 'coos7_test2',
+                    'coos7_test3', 'coos7_test4']:
         compile_results(val_set)
