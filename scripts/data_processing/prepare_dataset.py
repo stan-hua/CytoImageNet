@@ -33,9 +33,6 @@ else:
 # sys.path.append(f"{scripts_dir}/data_curation")
 
 
-
-
-
 class HelperFunctions:
     @staticmethod
     def check_exists(x):
@@ -547,6 +544,10 @@ class CytoImageNetCreation:
         for label in labels:
             df_ = pd.read_csv(f"{annotations_dir}classes/upsampled/{label}.csv")
 
+            # Filter for labels with >= 500 samples
+            if len(df_) < 500:
+                continue
+
             # Fix label
             df_["label"] = label.replace(" -- ", "/")
 
@@ -575,12 +576,11 @@ class CytoImageNetCreation:
             # Update new filenames
             df_['filename'] = new_filenames
             # Update new path
-            df_["path"] = f'/ferrero/cytoimagenet/{dir_label}'
+            df_["path"] = f'cytoimagenet/{dir_label}'
             accum_dfs.append(df_)
+
         df_metadata = pd.concat(accum_dfs, ignore_index=True)
         df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
-
-        CytoImageNetCreation.cytoimagenet_add_category()
 
     @staticmethod
     def cytoimagenet_fix_metadata():
@@ -732,7 +732,7 @@ class CytoImageNetCreation:
 
     @staticmethod
     def cytoimagenet_remove_classes_below_thresh():
-        """Find labels in CytoImageNet that are below 287 images. Remove labels
+        """Find labels in CytoImageNet that are below 500 images. Remove labels
         from dataset."""
         df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
         df_count = df_metadata.groupby('label').count().iloc[:, 0]
@@ -760,7 +760,7 @@ class CytoImageNetCreation:
         df_metadata.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
 
     @staticmethod
-    def cytoimagenet_remove_duplicates():
+    def cytoimagenet_remove_duplicates(edit=False):
         """Looks for duplicate image idx across labels. Removes duplicates."""
         df_metadata = pd.read_csv("/ferrero/cytoimagenet/metadata.csv")
         # Create temporary variable
@@ -790,9 +790,10 @@ class CytoImageNetCreation:
             df_metadata_unique.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
 
             # Remove duplicate images
-            df_metadata[df_metadata.duplicate].to_csv("/ferrero/cytoimagenet/redundant.csv", index=False)
-            df_metadata[df_metadata.duplicate].apply(lambda x: os.remove(x.path + "/" + x.filename), axis=1)
-            print(len(df_metadata[df_metadata.duplicate]), " removed!")
+            if edit:
+                df_metadata[df_metadata.duplicate].to_csv("/ferrero/cytoimagenet/redundant.csv", index=False)
+                df_metadata[df_metadata.duplicate].apply(lambda x: os.remove(x.path + "/" + x.filename), axis=1)
+                print(len(df_metadata[df_metadata.duplicate]), " removed!")
 
     @staticmethod
     def cytoimagenet_add_category():
@@ -875,21 +876,25 @@ if __name__ == '__main__' and "D:\\" not in os.getcwd():
     files = glob.glob(annotations_dir + "classes/upsampled/*.csv")
     all_labels = [i.split("classes/upsampled/")[-1].split(".csv")[0] for i in glob.glob(annotations_dir + "classes/upsampled/*.csv")]
 
+    # Redo metadata
+    print(len(all_labels))
+    CytoImageNetCreation.cytoimagenet_recreate_metadata(all_labels)
+
     # Upsample classes
-    if redo_upsampling:
-        pool = multiprocessing.Pool(30)
-        try:
-            pool.map(main, files)
-        except Exception as e:
-            pool.close()
-            pool.join()
+    # if redo_upsampling:
+    #     pool = multiprocessing.Pool(30)
+    #     try:
+    #         pool.map(main, files)
+    #     except Exception as e:
+    #         pool.close()
+    #         pool.join()
 
     # Construct CytoImageNet
-    if reconstruct_cytoimagenet:
-        CytoImageNetCreation.construct_cytoimagenet(all_labels, True)
-        print("Metadata Length: ", len(pd.read_csv("/ferrero/cytoimagenet/metadata.csv")))
+    # if reconstruct_cytoimagenet:
+    #     CytoImageNetCreation.construct_cytoimagenet(all_labels, True)
+    #     print("Metadata Length: ", len(pd.read_csv("/ferrero/cytoimagenet/metadata.csv")))
 
     # Update metadata
-    CytoImageNetCreation.cytoimagenet_add_category()
+    # CytoImageNetCreation.cytoimagenet_add_category()
 
 

@@ -782,6 +782,19 @@ class CytoImageNetValidation():
                                             stratify=df['label'])
         return df_val
 
+    def save_metadata(self):
+        df = pd.read_csv('/ferrero/cytoimagenet/metadata.csv')
+        df.drop(columns=["duplicate"], inplace=True)
+        df_train, df_val = train_test_split(df, test_size=0.1, random_state=0,
+                                            stratify=df['label'])
+        df_train["dset"] = "train"
+        df_val['dset'] = "val"
+        df_new = pd.concat([df_train, df_val])
+        df_new = df_new.reset_index(drop=True)
+        assert(len(df_new) == 890737)
+        df_new.to_csv("/ferrero/cytoimagenet/metadata.csv", index=False)
+        df_new.to_feather("/ferrero/cytoimagenet/metadata.ftr")
+
     def get_generator(self):
         """Returns tuple of tf.data.Dataset (image generator), and number of
         steps.
@@ -1607,36 +1620,38 @@ def compile_results(val_set='bbbc021'):
 
 
 if __name__ == "__main__" and "D:\\" not in os.getcwd():
-    dset = 'full'
-    curr_weights = 'full(aug)-24_epochs'
+    CytoImageNetValidation().save_metadata()
 
-    print('BBBC021 Hybrid Evaluation Starting...')
-    protocol = BBBC021Protocol(dset)
-    protocol.cytoimagenet_weights_suffix = curr_weights
-    protocol.get_all_results("cyto_imagenet_fusion")
-    # protocol.hybrid_evaluation()
-    # print('BBBC021 Hybrid Evaluation Finished!')
-
-    print('CYCLoPs Hybrid Evaluation Starting...')
-    protocol = CYCLoPsValidation(dset)
-    protocol.cytoimagenet_weights_suffix = curr_weights
-    protocol.get_all_results("cyto_imagenet_fusion")
-    # protocol.hybrid_evaluation()
-    # print('CYCLoPs Hybrid Evaluation Finished!')
-
-    for i in range(1, 5):
-        print(f'COOS-{i} Hybrid Evaluation Starting...')
-        start = datetime.datetime.now()
-        protocol = COOS7Validation(dset, test=f"test{i}")
-        protocol.cytoimagenet_weights_suffix = curr_weights
-        protocol.get_all_results("cyto_imagenet_fusion")
-        # protocol.hybrid_evaluation()
-        # print(f'COOS-{i} Hybrid Evaluation Finished!')
-
-    # main_cytoimagenet()
-    # main_coos(curr_weights, dset)
-    # main_cyclops(curr_weights, dset)
-    # main_bbbc021(curr_weights, dset)
-    for val_set in ['bbbc021', 'cyclops', 'coos7_test1', 'coos7_test2',
-                    'coos7_test3', 'coos7_test4']:
-        compile_results(val_set)
+    # dset = 'full'
+    # curr_weights = 'full(aug)-24_epochs'
+    #
+    # print('BBBC021 Hybrid Evaluation Starting...')
+    # protocol = BBBC021Protocol(dset)
+    # protocol.cytoimagenet_weights_suffix = curr_weights
+    # protocol.get_all_results("cyto_imagenet_fusion")
+    # # protocol.hybrid_evaluation()
+    # # print('BBBC021 Hybrid Evaluation Finished!')
+    #
+    # print('CYCLoPs Hybrid Evaluation Starting...')
+    # protocol = CYCLoPsValidation(dset)
+    # protocol.cytoimagenet_weights_suffix = curr_weights
+    # protocol.get_all_results("cyto_imagenet_fusion")
+    # # protocol.hybrid_evaluation()
+    # # print('CYCLoPs Hybrid Evaluation Finished!')
+    #
+    # for i in range(1, 5):
+    #     print(f'COOS-{i} Hybrid Evaluation Starting...')
+    #     start = datetime.datetime.now()
+    #     protocol = COOS7Validation(dset, test=f"test{i}")
+    #     protocol.cytoimagenet_weights_suffix = curr_weights
+    #     protocol.get_all_results("cyto_imagenet_fusion")
+    #     # protocol.hybrid_evaluation()
+    #     # print(f'COOS-{i} Hybrid Evaluation Finished!')
+    #
+    # # main_cytoimagenet()
+    # # main_coos(curr_weights, dset)
+    # # main_cyclops(curr_weights, dset)
+    # # main_bbbc021(curr_weights, dset)
+    # for val_set in ['bbbc021', 'cyclops', 'coos7_test1', 'coos7_test2',
+    #                 'coos7_test3', 'coos7_test4']:
+    #     compile_results(val_set)
