@@ -1,7 +1,10 @@
-# CytoImageNet
-A large-scale pretraining dataset for bioimage transfer learning. 
+# CytoImageNet: A large-scale pretraining dataset for bioimage transfer learning
 
 ![cytoimagenet_plot](https://github.com/stan-hua/CytoImageNet/blob/c65f28d6ca27cb7ecb37dfa442576083b5496522/figures/github_images/cytoimagenet_plot.png)
+
+**Paper**: https://arxiv.org/abs/2111.11646
+
+**Dataset**: https://www.kaggle.com/stanleyhua/cytoimagenet
 
 Motivation
 ---
