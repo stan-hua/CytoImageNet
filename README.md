@@ -6,6 +6,8 @@
 
 **Dataset**: https://www.kaggle.com/stanleyhua/cytoimagenet
 
+**Recorded talk:** https://youtu.be/qfEA-UR6tVM
+
 Motivation
 ---
 In past few decades, the increase in speed of data collection has led to the dawn of so-called '*big data*'. In the field of molecular biology, 
