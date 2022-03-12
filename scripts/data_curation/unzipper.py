@@ -7,9 +7,3 @@ for subdir in dir_names:
     os.chdir(home_dir)
     os.chdir(subdir)
     os.system("find . -depth -name '*.zip' -exec /usr/bin/unzip -n {} \; -exec rm {} \;")
-
-
-if False:
-    "tar -xvkf sample.tar.gz"
-
-    # 37983_ERSytoBleed.tar.gz

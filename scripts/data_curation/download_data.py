@@ -28,10 +28,11 @@ def download_nonexisting(df: pd.DataFrame) -> None:
     print(f"{len(to_download[to_download])} left to download!")
 
     for i in df.index:
-        # if df.loc[i, "dir_name"] in os.listdir(data_dir):
-        #     continue
         os.chdir(data_dir)
-        # os.mkdir(df.loc[i, "dir_name"])
+
+        if df.loc[i, "dir_name"] not in os.listdir(data_dir):
+            os.mkdir(df.loc[i, "dir_name"])
+
         os.chdir(df.loc[i, "dir_name"])
 
         if isinstance(df.loc[i, "download"], list):
@@ -43,7 +44,7 @@ def download_nonexisting(df: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
     df = pd.read_csv("/home/stan/cytoimagenet/annotations/datasets_info.csv")
-    df = df[df.dir_name.isin(['kag_hpa'])]
+    df = df[df.dir_name.isin(['bbbc021'])]
     df.download = df.download.map(str_to_eval)
     df.dropna(subset=["download"], inplace=True)
     download_nonexisting(df)
